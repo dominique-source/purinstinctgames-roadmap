@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0d0d0d;
+  --color-panel: #161616;
+  --color-panel2: #1f1f1f;
+  --color-line: #2c2c2c;
+  --color-lime: #ccff00;
+  --color-mist: #c9c9c9;
+  --color-dim: #8a8a8a;
+  --font-display: var(--font-barlow-condensed);
+  --font-body: var(--font-barlow);
+}
+
+html,
+body {
+  background: var(--color-ink);
+  color: #ffffff;
+}
+
+* {
+  border-radius: 0 !important; /* brand rule: sharp geometry, no rounded corners */
+}
+
+::selection {
+  background: var(--color-lime);
+  color: var(--color-ink);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--color-lime);
+}
+
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--color-lime);
+  outline-offset: 1px;
+}
