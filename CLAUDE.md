@@ -15,7 +15,9 @@ seed sprint. Shown to partners/investors; also the founders' working tracker.
 
 ## Architecture
 - `lib/roadmap.ts` — single source of truth for phases, milestones, tasks,
-  checkpoints, track colors. Content edits happen here only.
+  checkpoints, track colors. Content edits happen here only. All display
+  text is `Localized` (`{ en, fr }`); read it with `t(value, locale)`. Every
+  new task/milestone/phase field needs both languages filled in.
 - `lib/firebase.ts` — Firebase app/Firestore/Auth init from
   `NEXT_PUBLIC_FIREBASE_*` env vars (see `.env.local.example`). Silent
   anonymous auth gives every visitor a stable uid — no visible login.
@@ -26,7 +28,9 @@ seed sprint. Shown to partners/investors; also the founders' working tracker.
 - `lib/useHistory.ts` — subscribes to the append-only `history` collection
   (who changed what, when) for the "Historique récent" panel.
 - `components/RoadmapApp.tsx` — the whole UI (map left, sticky detail panel
-  right; stacks on mobile), plus the unlock bar and history panel.
+  right; stacks on mobile), plus the unlock bar, history panel, and the
+  EN/FR toggle (`COPY[locale]` holds UI chrome strings; choice persists in
+  `localStorage`, defaults to EN).
 - `firestore.rules` — anyone can read; editing (`tasks`/`history` writes)
   requires a `sessions/{uid}` doc, created only if the client's passcode hash
   matches `config/access` (set once by hand in the console — see below).
