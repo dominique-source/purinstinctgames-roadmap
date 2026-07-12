@@ -6,11 +6,19 @@ Interactive roadmap for the July 13 – September 13, 2026 sprint:
 - 4 phases · 12 clickable milestones · 4 checkpoints (C1–C4)
 - Every milestone opens a task list: assign **Dominique / François / To assign**,
   mark **complete**, and write **notes**
-- Progress is saved in the browser (`localStorage`) — no server, no login.
-  Each founder's device keeps its own state; use the Monday war-room to sync.
+- Progress is shared live via Firebase — everyone sees the same board, no
+  device silos. Anyone can view; editing requires the shared passcode.
+  Every change (who, what, when) is kept in an append-only history log.
 - Brand system: `#0D0D0D` / `#CCFF00`, Barlow Condensed Black Italic, sharp
   geometry, **no animations** — built to be shown to a partner so they see
   exactly where they fit on the map.
+
+## Firebase setup
+
+See the "Firebase setup" section in `CLAUDE.md` for the one-time steps
+(create project, enable Firestore + Anonymous Auth, set env vars, hash the
+shared password, deploy `firestore.rules`). Copy `.env.local.example` to
+`.env.local` and fill it in before running locally.
 
 ## Run locally
 

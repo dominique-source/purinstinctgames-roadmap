@@ -292,6 +292,10 @@ export function milestoneById(id: string): Milestone | undefined {
   return allMilestones.find((m) => m.id === id);
 }
 
+export function taskById(id: string): Task | undefined {
+  return allMilestones.flatMap((m) => m.tasks).find((t) => t.id === id);
+}
+
 export const trackColors: Record<Milestone["track"], string> = {
   Raise: "#CCFF00",
   Games: "#7DF9FF",

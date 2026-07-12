@@ -1,0 +1,41 @@
+rules_version = '2';
+
+// Model: anyone can read (investors/partners viewing the map). Editing
+// requires the shared passcode, checked once against config/access and
+// remembered as a sessions/{uid} doc tied to that visitor's anonymous-auth
+// uid (persists across reloads on the same device/browser).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isUnlocked() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/sessions/$(request.auth.uid));
+    }
+
+    // Holds the passcode hash. Never directly readable/writable by clients —
+    // only referenced internally via get() from the sessions rule below.
+    match /config/access {
+      allow read, write: if false;
+    }
+
+    match /sessions/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.passcodeHash ==
+           get(/databases/$(database)/documents/config/access).data.passcodeHash;
+      allow update, delete: if false;
+    }
+
+    match /tasks/{taskId} {
+      allow read: if true;
+      allow write: if isUnlocked();
+    }
+
+    // Append-only audit log — never edited or deleted once written.
+    match /history/{entryId} {
+      allow read: if true;
+      allow create: if isUnlocked();
+      allow update, delete: if false;
+    }
+  }
+}

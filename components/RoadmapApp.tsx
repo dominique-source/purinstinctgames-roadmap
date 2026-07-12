@@ -7,15 +7,28 @@ import {
   checkpoints,
   allMilestones,
   trackColors,
+  taskById,
   type Milestone,
   type Owner,
 } from "@/lib/roadmap";
-import { useProgress, countDone } from "@/lib/useProgress";
+import { useProgress, countDone, getSavedActorName } from "@/lib/useProgress";
+import { useHistory, type HistoryEntry } from "@/lib/useHistory";
 
 const OWNER_OPTIONS: Owner[] = ["Dominique", "François", "Open"];
+const ACTOR_OPTIONS: Owner[] = ["Dominique", "François"];
 
 export default function RoadmapApp() {
-  const { ready, progress, get, update, reset } = useProgress();
+  const {
+    ready,
+    progress,
+    get,
+    update,
+    reset,
+    unlocked,
+    unlocking,
+    unlock,
+    authError,
+  } = useProgress();
   const [selectedId, setSelectedId] = useState<string>(allMilestones[0].id);
 
   const selected = useMemo(
@@ -45,6 +58,20 @@ export default function RoadmapApp() {
         return effective === owner && !(st?.done ?? false);
       }).length;
 
+  if (authError) {
+    return (
+      <div className="mx-auto max-w-xl px-4 py-24 text-center">
+        <p className="font-display text-2xl font-black italic uppercase text-lime">
+          Setup required
+        </p>
+        <p className="mt-3 text-sm text-mist">{authError}</p>
+        <p className="mt-2 text-xs text-dim">
+          Add the NEXT_PUBLIC_FIREBASE_* variables (see .env.local.example) and redeploy.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-[1400px] px-4 pb-24 sm:px-8">
       {/* ============================== HEADER ============================== */}
@@ -66,14 +93,6 @@ export default function RoadmapApp() {
             <Stat label="Tasks done" value={`${totalDone}/${totalTasks}`} />
             <Stat label="Dominique open" value={String(ready ? ownerCount("Dominique") : "–")} />
             <Stat label="François open" value={String(ready ? ownerCount("François") : "–")} />
-            <button
-              onClick={() => {
-                if (window.confirm("Reset all progress, owners and notes on this device?")) reset();
-              }}
-              className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
-            >
-              Reset
-            </button>
           </div>
         </div>
 
@@ -86,13 +105,16 @@ export default function RoadmapApp() {
         </div>
 
         {/* track legend */}
-        <div className="mt-3 flex flex-wrap gap-4 text-xs uppercase tracking-widest text-dim">
-          {Object.entries(trackColors).map(([track, color]) => (
-            <span key={track} className="flex items-center gap-2">
-              <span className="inline-block h-2.5 w-2.5" style={{ background: color }} />
-              {track}
-            </span>
-          ))}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap gap-4 text-xs uppercase tracking-widest text-dim">
+            {Object.entries(trackColors).map(([track, color]) => (
+              <span key={track} className="flex items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5" style={{ background: color }} />
+                {track}
+              </span>
+            ))}
+          </div>
+          <AccessBar unlocked={unlocked} unlocking={unlocking} unlock={unlock} reset={reset} />
         </div>
       </header>
 
@@ -155,6 +177,8 @@ export default function RoadmapApp() {
               </div>
             );
           })}
+
+          <HistoryPanel />
         </section>
 
         {/* --------------------------- DETAIL PANEL --------------------------- */}
@@ -163,13 +187,14 @@ export default function RoadmapApp() {
             milestone={selected}
             getState={get}
             update={update}
+            unlocked={unlocked}
           />
         </aside>
       </div>
 
       <footer className="mt-16 border-t border-line pt-4 text-xs text-dim">
         PürInstinct Worldwide Inc. · Confidential working document · Progress is
-        stored locally in this browser (no server).
+        shared live via Firebase — every change is logged in the history below.
       </footer>
     </div>
   );
@@ -183,6 +208,105 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="font-display text-3xl font-black leading-none text-lime">{value}</p>
       <p className="text-[11px] uppercase tracking-widest text-dim">{label}</p>
     </div>
+  );
+}
+
+function AccessBar({
+  unlocked,
+  unlocking,
+  unlock,
+  reset,
+}: {
+  unlocked: boolean;
+  unlocking: boolean;
+  unlock: (name: string, password: string) => Promise<boolean>;
+  reset: () => Promise<void>;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState<Owner>(
+    (getSavedActorName() as Owner) ?? "Dominique"
+  );
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  if (unlocked) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-xs uppercase tracking-widest text-lime">
+          Unlocked{getSavedActorName() ? ` — ${getSavedActorName()}` : ""}
+        </span>
+        <button
+          onClick={() => {
+            if (window.confirm("Reset all shared progress? This clears every checkbox, owner and note — history is kept.")) {
+              reset();
+            }
+          }}
+          className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
+        >
+          Reset
+        </button>
+      </div>
+    );
+  }
+
+  if (!showForm) {
+    return (
+      <button
+        onClick={() => setShowForm(true)}
+        className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
+      >
+        Locked — unlock to edit
+      </button>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setError(null);
+        const ok = await unlock(name, password);
+        if (ok) {
+          setShowForm(false);
+          setPassword("");
+        } else {
+          setError("Wrong password.");
+        }
+      }}
+      className="flex flex-wrap items-center gap-2"
+    >
+      {ACTOR_OPTIONS.map((o) => (
+        <button
+          type="button"
+          key={o}
+          onClick={() => setName(o)}
+          aria-pressed={name === o}
+          className={`border px-2 py-2 text-xs font-semibold uppercase tracking-wider ${
+            name === o
+              ? "border-lime bg-lime text-ink"
+              : "border-line text-dim hover:border-mist hover:text-mist"
+          }`}
+        >
+          {o}
+        </button>
+      ))}
+      <input
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="Password"
+        autoFocus
+        className="border border-line bg-ink px-2 py-2 text-xs text-mist placeholder:text-dim"
+      />
+      <button
+        type="submit"
+        disabled={unlocking || !password}
+        className="border border-lime bg-lime px-3 py-2 text-xs font-semibold uppercase tracking-widest text-ink disabled:opacity-50"
+      >
+        {unlocking ? "…" : "Unlock"}
+      </button>
+      {error && <span className="text-xs text-[#FF7A59]">{error}</span>}
+    </form>
   );
 }
 
@@ -249,10 +373,12 @@ function MilestoneDetail({
   milestone,
   getState,
   update,
+  unlocked,
 }: {
   milestone: Milestone;
   getState: ReturnType<typeof useProgress>["get"];
   update: ReturnType<typeof useProgress>["update"];
+  unlocked: boolean;
 }) {
   const done = milestone.tasks.filter((t) => getState(t.id).done).length;
   return (
@@ -284,8 +410,9 @@ function MilestoneDetail({
                   id={`done-${task.id}`}
                   type="checkbox"
                   checked={st.done}
+                  disabled={!unlocked}
                   onChange={(e) => update(task.id, { done: e.target.checked })}
-                  className="mt-1 h-5 w-5 shrink-0 cursor-pointer"
+                  className="mt-1 h-5 w-5 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label={`Mark "${task.title}" complete`}
                 />
                 <div className="min-w-0 flex-1">
@@ -308,9 +435,10 @@ function MilestoneDetail({
                     {OWNER_OPTIONS.map((o) => (
                       <button
                         key={o}
+                        disabled={!unlocked}
                         onClick={() => update(task.id, { owner: o })}
                         aria-pressed={owner === o}
-                        className={`border px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
+                        className={`border px-3 py-1 text-xs font-semibold uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40 ${
                           owner === o
                             ? o === "Open"
                               ? "border-mist bg-mist text-ink"
@@ -330,10 +458,11 @@ function MilestoneDetail({
 
                   <textarea
                     value={st.notes}
+                    disabled={!unlocked}
                     onChange={(e) => update(task.id, { notes: e.target.value })}
                     placeholder="Notes — decisions, contacts, blockers…"
                     rows={st.notes ? Math.min(6, st.notes.split("\n").length + 1) : 2}
-                    className="mt-3 w-full border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim"
+                    className="mt-3 w-full border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim disabled:cursor-not-allowed disabled:opacity-40"
                   />
                 </div>
               </div>
@@ -341,6 +470,71 @@ function MilestoneDetail({
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+function timeAgo(date: Date | null): string {
+  if (!date) return "";
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+function describeEntry(entry: HistoryEntry): string {
+  if (entry.field === "reset") return "reset the entire board";
+  const task = entry.taskId ? taskById(entry.taskId) : undefined;
+  const label = task?.title ?? entry.taskId ?? "a task";
+  switch (entry.field) {
+    case "done":
+      return entry.value ? `marked "${label}" done` : `reopened "${label}"`;
+    case "owner":
+      return `assigned "${label}" to ${entry.value ?? "To assign"}`;
+    case "notes":
+      return `edited notes on "${label}"`;
+    default:
+      return `updated "${label}"`;
+  }
+}
+
+function HistoryPanel() {
+  const entries = useHistory(50);
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mb-10 border border-line bg-panel">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between p-4 text-left"
+      >
+        <span className="font-display text-xl font-black italic uppercase">
+          Historique récent
+        </span>
+        <span className="text-xs uppercase tracking-widest text-dim">
+          {open ? "Hide" : "Show"} · {entries.length} entries
+        </span>
+      </button>
+      {open && (
+        <ul className="max-h-[420px] overflow-y-auto border-t border-line">
+          {entries.length === 0 && (
+            <li className="p-4 text-sm text-dim">No changes logged yet.</li>
+          )}
+          {entries.map((entry) => (
+            <li key={entry.id} className="flex items-baseline justify-between gap-4 border-b border-line p-3 text-sm last:border-b-0">
+              <span className="text-mist">
+                <span className="font-semibold text-lime">{entry.actorName}</span>{" "}
+                {describeEntry(entry)}
+              </span>
+              <span className="shrink-0 text-xs text-dim">{timeAgo(entry.at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

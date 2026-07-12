@@ -16,12 +16,35 @@ seed sprint. Shown to partners/investors; also the founders' working tracker.
 ## Architecture
 - `lib/roadmap.ts` — single source of truth for phases, milestones, tasks,
   checkpoints, track colors. Content edits happen here only.
-- `lib/useProgress.ts` — localStorage store (`purinstinct-roadmap-v1`):
-  `{ [taskId]: { owner, done, notes } }`. Task ids must stay stable.
+- `lib/firebase.ts` — Firebase app/Firestore/Auth init from
+  `NEXT_PUBLIC_FIREBASE_*` env vars (see `.env.local.example`). Silent
+  anonymous auth gives every visitor a stable uid — no visible login.
+- `lib/useProgress.ts` — Firestore-backed store, same shape as before
+  (`{ [taskId]: { owner, done, notes } }`, task ids must stay stable), now
+  shared live across every visitor instead of per-device localStorage.
+  Also exposes `unlocked`/`unlock(name, password)` for the edit gate.
+- `lib/useHistory.ts` — subscribes to the append-only `history` collection
+  (who changed what, when) for the "Historique récent" panel.
 - `components/RoadmapApp.tsx` — the whole UI (map left, sticky detail panel
-  right; stacks on mobile).
-- No backend. If shared state is ever needed, replace `useProgress` with an
-  API-backed store; keep the same interface.
+  right; stacks on mobile), plus the unlock bar and history panel.
+- `firestore.rules` — anyone can read; editing (`tasks`/`history` writes)
+  requires a `sessions/{uid}` doc, created only if the client's passcode hash
+  matches `config/access` (set once by hand in the console — see below).
+
+## Firebase setup (one-time, per environment)
+1. console.firebase.google.com → Add project → enable **Firestore**
+   (production mode) and **Authentication → Sign-in method → Anonymous**.
+2. Project settings → Add app → Web → copy the config into `.env.local`
+   (local) and into Vercel → Project → Settings → Environment Variables
+   (production) — see `.env.local.example` for the exact keys.
+3. Pick a shared edit password. Compute its hash without ever sending the
+   plaintext anywhere: `printf '%s' 'the-password' | shasum -a 256`.
+4. Firestore console → Data → create doc `config/access` with field
+   `passcodeHash` = that hex string.
+5. `npx firebase-tools login` (interactive) once, then set the real project
+   id in `.firebaserc` and run `npx firebase-tools deploy --only firestore:rules`.
+- To change the password later: repeat steps 3–4 with a new hash. Existing
+  unlocked sessions keep working until someone clears that browser's storage.
 
 ## Conventions
 - French proper nouns keep accents (François, Québec, PürInstinct).
