@@ -31,6 +31,18 @@ service cloud.firestore {
       allow write: if isUnlocked();
     }
 
+    // User-added milestones ("onglets") and tasks, layered on top of the
+    // fixed M1-M12 plan defined in lib/roadmap.ts.
+    match /customMilestones/{id} {
+      allow read: if true;
+      allow create, update, delete: if isUnlocked();
+    }
+
+    match /customTasks/{id} {
+      allow read: if true;
+      allow create, update, delete: if isUnlocked();
+    }
+
     // Append-only audit log — never edited or deleted once written.
     match /history/{entryId} {
       allow read: if true;

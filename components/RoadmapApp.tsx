@@ -8,18 +8,28 @@ import {
   allMilestones,
   trackColors,
   trackLabels,
-  taskById,
   t,
   type Locale,
+  type Localized,
   type Milestone,
+  type Task,
   type Owner,
 } from "@/lib/roadmap";
 import { useProgress, countDone, getSavedActorName } from "@/lib/useProgress";
 import { useHistory, type HistoryEntry } from "@/lib/useHistory";
+import { useCustomContent } from "@/lib/useCustomContent";
 
 const OWNER_OPTIONS: Owner[] = ["Dominique", "François", "Open"];
 const ACTOR_OPTIONS: Owner[] = ["Dominique", "François"];
+const TRACK_OPTIONS: Milestone["track"][] = ["Raise", "Games", "INSTINCT", "Partners"];
 const LOCALE_KEY = "purinstinct-roadmap-locale";
+
+type RenderTask = Task & { isCustom?: boolean };
+type RenderMilestone = Omit<Milestone, "tasks"> & { tasks: RenderTask[]; isCustom?: boolean };
+
+function wrap(s: string): Localized {
+  return { en: s, fr: s };
+}
 
 const COPY = {
   en: {
@@ -48,6 +58,18 @@ const COPY = {
     footer: "PürInstinct Worldwide Inc. · Confidential working document · Progress is shared live via Firebase — every change is logged in the history below.",
     setupRequired: "Setup required",
     setupHint: "Add the NEXT_PUBLIC_FIREBASE_* variables (see .env.local.example) and redeploy.",
+    addMilestone: "+ Add milestone",
+    addTask: "+ Add task",
+    milestoneTitlePlaceholder: "Milestone title",
+    goalPlaceholder: "Goal (optional)",
+    windowPlaceholder: "Timing (e.g. Jul 20–25)",
+    track: "Track",
+    save: "Save",
+    cancel: "Cancel",
+    taskTitlePlaceholder: "Task title",
+    taskDetailPlaceholder: "Detail (optional)",
+    deleteConfirmMilestone: "Delete this milestone and its tasks?",
+    deleteConfirmTask: "Delete this task?",
   },
   fr: {
     tagline: "PürInstinct · Le sport à l'état pur",
@@ -75,6 +97,18 @@ const COPY = {
     footer: "PürInstinct Worldwide Inc. · Document de travail confidentiel · La progression est partagée en direct via Firebase — chaque changement est consigné dans l'historique ci-dessous.",
     setupRequired: "Configuration requise",
     setupHint: "Ajoute les variables NEXT_PUBLIC_FIREBASE_* (voir .env.local.example) et redéploie.",
+    addMilestone: "+ Ajouter un onglet",
+    addTask: "+ Ajouter une tâche",
+    milestoneTitlePlaceholder: "Titre de l'onglet",
+    goalPlaceholder: "Objectif (optionnel)",
+    windowPlaceholder: "Échéance (ex. 20–25 juil.)",
+    track: "Catégorie",
+    save: "Enregistrer",
+    cancel: "Annuler",
+    taskTitlePlaceholder: "Titre de la tâche",
+    taskDetailPlaceholder: "Détail (optionnel)",
+    deleteConfirmMilestone: "Supprimer cet onglet et ses tâches?",
+    deleteConfirmTask: "Supprimer cette tâche?",
   },
 } as const;
 
@@ -94,6 +128,14 @@ export default function RoadmapApp() {
     unlock,
     authError,
   } = useProgress();
+  const {
+    customMilestones,
+    customTasks,
+    addMilestone,
+    addTask,
+    removeMilestone,
+    removeTask,
+  } = useCustomContent();
   const [selectedId, setSelectedId] = useState<string>(allMilestones[0].id);
   const [locale, setLocale] = useState<Locale>("en");
   const c = COPY[locale];
@@ -108,26 +150,76 @@ export default function RoadmapApp() {
     window.localStorage.setItem(LOCALE_KEY, locale);
   }, [locale]);
 
+  const mergedPhases = useMemo(() => {
+    let extraCode = allMilestones.length;
+    return phases.map((phase) => {
+      const tasksFor = (milestoneId: string): RenderTask[] =>
+        customTasks
+          .filter((ct) => ct.milestoneId === milestoneId)
+          .map((ct) => ({
+            id: ct.id,
+            title: wrap(ct.title),
+            detail: ct.detail ? wrap(ct.detail) : undefined,
+            suggestedOwner: ct.suggestedOwner,
+            isCustom: true,
+          }));
+
+      const staticMilestones: RenderMilestone[] = phase.milestones.map((m) => ({
+        ...m,
+        tasks: [...m.tasks, ...tasksFor(m.id)],
+      }));
+
+      const extraMilestones: RenderMilestone[] = customMilestones
+        .filter((cm) => cm.phaseId === phase.id)
+        .map((cm) => {
+          extraCode += 1;
+          return {
+            id: cm.id,
+            code: `M${extraCode}`,
+            title: wrap(cm.title),
+            goal: wrap(cm.goal),
+            window: wrap(cm.window),
+            track: cm.track,
+            tasks: tasksFor(cm.id),
+            isCustom: true,
+          };
+        });
+
+      return { ...phase, milestones: [...staticMilestones, ...extraMilestones] };
+    });
+  }, [customMilestones, customTasks]);
+
+  const mergedAllMilestones = useMemo(
+    () => mergedPhases.flatMap((p) => p.milestones),
+    [mergedPhases]
+  );
+
+  const taskLabelById = useMemo(() => {
+    const map: Record<string, Localized> = {};
+    mergedAllMilestones.forEach((m) => m.tasks.forEach((task) => { map[task.id] = task.title; }));
+    return map;
+  }, [mergedAllMilestones]);
+
   const selected = useMemo(
-    () => allMilestones.find((m) => m.id === selectedId) ?? allMilestones[0],
-    [selectedId]
+    () => mergedAllMilestones.find((m) => m.id === selectedId) ?? mergedAllMilestones[0],
+    [selectedId, mergedAllMilestones]
   );
 
   const totalTasks = useMemo(
-    () => allMilestones.reduce((n, m) => n + m.tasks.length, 0),
-    []
+    () => mergedAllMilestones.reduce((n, m) => n + m.tasks.length, 0),
+    [mergedAllMilestones]
   );
   const totalDone = useMemo(
     () =>
       countDone(
         progress,
-        allMilestones.flatMap((m) => m.tasks.map((t) => t.id))
+        mergedAllMilestones.flatMap((m) => m.tasks.map((t) => t.id))
       ),
-    [progress]
+    [progress, mergedAllMilestones]
   );
 
   const ownerCount = (owner: Owner) =>
-    allMilestones
+    mergedAllMilestones
       .flatMap((m) => m.tasks)
       .filter((t) => {
         const st = progress[t.id];
@@ -209,7 +301,7 @@ export default function RoadmapApp() {
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
         {/* ------------------------------ MAP ------------------------------ */}
         <section aria-label="Roadmap map">
-          {phases.map((phase) => {
+          {mergedPhases.map((phase) => {
             const checkpoint = checkpoints.find((c2) => c2.afterPhase === phase.id);
             return (
               <div key={phase.id} className="relative pl-6">
@@ -229,7 +321,7 @@ export default function RoadmapApp() {
                   <p className="mt-1 max-w-3xl text-sm text-dim">{t(phase.intent, locale)}</p>
                 </div>
 
-                <div className="grid gap-3 pb-8 pt-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-3 pb-3 pt-3 sm:grid-cols-2 xl:grid-cols-3">
                   {phase.milestones.map((m) => (
                     <MilestoneCard
                       key={m.id}
@@ -237,10 +329,27 @@ export default function RoadmapApp() {
                       locale={locale}
                       active={m.id === selectedId}
                       done={countDone(progress, m.tasks.map((t) => t.id))}
+                      unlocked={unlocked}
                       onSelect={() => setSelectedId(m.id)}
+                      onDelete={
+                        m.isCustom
+                          ? () => {
+                              if (window.confirm(c.deleteConfirmMilestone)) {
+                                if (selectedId === m.id) setSelectedId(allMilestones[0].id);
+                                removeMilestone(m.id);
+                              }
+                            }
+                          : undefined
+                      }
                     />
                   ))}
                 </div>
+
+                {unlocked && (
+                  <div className="pb-8">
+                    <AddMilestoneForm locale={locale} phaseId={phase.id} addMilestone={addMilestone} />
+                  </div>
+                )}
 
                 {checkpoint && (
                   <div className="mb-10 border border-lime bg-panel p-4">
@@ -266,7 +375,7 @@ export default function RoadmapApp() {
             );
           })}
 
-          <HistoryPanel locale={locale} />
+          <HistoryPanel locale={locale} taskLabelById={taskLabelById} />
         </section>
 
         {/* --------------------------- DETAIL PANEL --------------------------- */}
@@ -277,6 +386,8 @@ export default function RoadmapApp() {
             getState={get}
             update={update}
             unlocked={unlocked}
+            addTask={addTask}
+            removeTask={removeTask}
           />
         </aside>
       </div>
@@ -429,20 +540,22 @@ function MilestoneCard({
   locale,
   active,
   done,
+  unlocked,
   onSelect,
+  onDelete,
 }: {
-  milestone: Milestone;
+  milestone: RenderMilestone;
   locale: Locale;
   active: boolean;
   done: number;
+  unlocked: boolean;
   onSelect: () => void;
+  onDelete?: () => void;
 }) {
   const total = milestone.tasks.length;
   const complete = done === total;
   return (
-    <button
-      onClick={onSelect}
-      aria-pressed={active}
+    <div
       className={`group relative border p-4 text-left ${
         active
           ? "border-lime bg-panel2"
@@ -454,34 +567,248 @@ function MilestoneCard({
         style={{ background: trackColors[milestone.track] }}
         aria-hidden
       />
-      <div className="flex items-baseline justify-between gap-2 pl-2">
-        <span className="font-display text-sm font-semibold uppercase tracking-widest text-dim">
-          {milestone.code} · {t(trackLabels[milestone.track], locale)}
-        </span>
-        <span
-          className={`font-display text-sm font-black ${
-            complete ? "text-lime" : "text-mist"
-          }`}
-        >
-          {done}/{total}
-        </span>
-      </div>
-      <h3 className="mt-1 pl-2 font-display text-2xl font-black italic uppercase leading-tight">
-        {t(milestone.title, locale)}
-      </h3>
-      <p className="mt-1 pl-2 text-xs uppercase tracking-widest text-dim">
-        {t(milestone.window, locale)}
-      </p>
-      <div className="ml-2 mt-3 h-1.5 bg-ink">
-        <div
-          className="h-1.5"
-          style={{
-            width: `${total ? (done / total) * 100 : 0}%`,
-            background: trackColors[milestone.track],
+      {unlocked && onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
           }}
-        />
+          aria-label="Delete milestone"
+          className="absolute right-2 top-2 text-dim hover:text-lime"
+        >
+          ×
+        </button>
+      )}
+      <button onClick={onSelect} aria-pressed={active} className="w-full text-left">
+        <div className="flex items-baseline justify-between gap-2 pl-2 pr-4">
+          <span className="font-display text-sm font-semibold uppercase tracking-widest text-dim">
+            {milestone.code} · {t(trackLabels[milestone.track], locale)}
+          </span>
+          <span
+            className={`font-display text-sm font-black ${
+              complete ? "text-lime" : "text-mist"
+            }`}
+          >
+            {done}/{total}
+          </span>
+        </div>
+        <h3 className="mt-1 pl-2 font-display text-2xl font-black italic uppercase leading-tight">
+          {t(milestone.title, locale)}
+        </h3>
+        <p className="mt-1 pl-2 text-xs uppercase tracking-widest text-dim">
+          {t(milestone.window, locale)}
+        </p>
+        <div className="ml-2 mt-3 h-1.5 bg-ink">
+          <div
+            className="h-1.5"
+            style={{
+              width: `${total ? (done / total) * 100 : 0}%`,
+              background: trackColors[milestone.track],
+            }}
+          />
+        </div>
+      </button>
+    </div>
+  );
+}
+
+function AddMilestoneForm({
+  locale,
+  phaseId,
+  addMilestone,
+}: {
+  locale: Locale;
+  phaseId: string;
+  addMilestone: (phaseId: string, title: string, goal: string, window: string, track: Milestone["track"]) => Promise<void>;
+}) {
+  const c = COPY[locale];
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [goal, setGoal] = useState("");
+  const [win, setWin] = useState("");
+  const [track, setTrack] = useState<Milestone["track"]>("Raise");
+  const [saving, setSaving] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
+      >
+        {c.addMilestone}
+      </button>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        setSaving(true);
+        await addMilestone(phaseId, title.trim(), goal.trim(), win.trim(), track);
+        setSaving(false);
+        setTitle("");
+        setGoal("");
+        setWin("");
+        setOpen(false);
+      }}
+      className="flex flex-col gap-2 border border-line bg-panel p-4"
+    >
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder={c.milestoneTitlePlaceholder}
+        autoFocus
+        className="border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim"
+      />
+      <input
+        value={goal}
+        onChange={(e) => setGoal(e.target.value)}
+        placeholder={c.goalPlaceholder}
+        className="border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim"
+      />
+      <input
+        value={win}
+        onChange={(e) => setWin(e.target.value)}
+        placeholder={c.windowPlaceholder}
+        className="border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim"
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-widest text-dim">{c.track}</span>
+        {TRACK_OPTIONS.map((tr) => (
+          <button
+            type="button"
+            key={tr}
+            onClick={() => setTrack(tr)}
+            aria-pressed={track === tr}
+            className="flex items-center gap-1 border px-2 py-1 text-xs uppercase tracking-wider"
+            style={{
+              borderColor: track === tr ? trackColors[tr] : undefined,
+              color: track === tr ? trackColors[tr] : undefined,
+            }}
+          >
+            <span className="inline-block h-2 w-2" style={{ background: trackColors[tr] }} />
+            {t(trackLabels[tr], locale)}
+          </button>
+        ))}
       </div>
-    </button>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving || !title.trim()}
+          className="border border-lime bg-lime px-3 py-2 text-xs font-semibold uppercase tracking-widest text-ink disabled:opacity-50"
+        >
+          {saving ? "…" : c.save}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-mist hover:text-mist"
+        >
+          {c.cancel}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function AddTaskForm({
+  locale,
+  milestoneId,
+  addTask,
+}: {
+  locale: Locale;
+  milestoneId: string;
+  addTask: (milestoneId: string, title: string, detail: string, suggestedOwner: Owner) => Promise<void>;
+}) {
+  const c = COPY[locale];
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [detail, setDetail] = useState("");
+  const [owner, setOwner] = useState<Owner>("Open");
+  const [saving, setSaving] = useState(false);
+
+  if (!open) {
+    return (
+      <li className="p-5">
+        <button
+          onClick={() => setOpen(true)}
+          className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
+        >
+          {c.addTask}
+        </button>
+      </li>
+    );
+  }
+
+  return (
+    <li className="p-5">
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!title.trim()) return;
+          setSaving(true);
+          await addTask(milestoneId, title.trim(), detail.trim(), owner);
+          setSaving(false);
+          setTitle("");
+          setDetail("");
+          setOwner("Open");
+          setOpen(false);
+        }}
+        className="flex flex-col gap-2"
+      >
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={c.taskTitlePlaceholder}
+          autoFocus
+          className="border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim"
+        />
+        <input
+          value={detail}
+          onChange={(e) => setDetail(e.target.value)}
+          placeholder={c.taskDetailPlaceholder}
+          className="border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] uppercase tracking-widest text-dim">{c.owner}</span>
+          {OWNER_OPTIONS.map((o) => (
+            <button
+              type="button"
+              key={o}
+              onClick={() => setOwner(o)}
+              aria-pressed={owner === o}
+              className={`border px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
+                owner === o
+                  ? o === "Open"
+                    ? "border-mist bg-mist text-ink"
+                    : "border-lime bg-lime text-ink"
+                  : "border-line text-dim hover:border-mist hover:text-mist"
+              }`}
+            >
+              {ownerLabel(o, locale)}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={saving || !title.trim()}
+            className="border border-lime bg-lime px-3 py-2 text-xs font-semibold uppercase tracking-widest text-ink disabled:opacity-50"
+          >
+            {saving ? "…" : c.save}
+          </button>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-mist hover:text-mist"
+          >
+            {c.cancel}
+          </button>
+        </div>
+      </form>
+    </li>
   );
 }
 
@@ -491,12 +818,16 @@ function MilestoneDetail({
   getState,
   update,
   unlocked,
+  addTask,
+  removeTask,
 }: {
-  milestone: Milestone;
+  milestone: RenderMilestone;
   locale: Locale;
   getState: ReturnType<typeof useProgress>["get"];
   update: ReturnType<typeof useProgress>["update"];
   unlocked: boolean;
+  addTask: (milestoneId: string, title: string, detail: string, suggestedOwner: Owner) => Promise<void>;
+  removeTask: (id: string) => Promise<void>;
 }) {
   const c = COPY[locale];
   const done = milestone.tasks.filter((t) => getState(t.id).done).length;
@@ -535,14 +866,27 @@ function MilestoneDetail({
                   aria-label={`Mark "${t(task.title, locale)}" complete`}
                 />
                 <div className="min-w-0 flex-1">
-                  <label
-                    htmlFor={`done-${task.id}`}
-                    className={`block cursor-pointer font-medium leading-snug ${
-                      st.done ? "text-dim line-through" : "text-white"
-                    }`}
-                  >
-                    {t(task.title, locale)}
-                  </label>
+                  <div className="flex items-start justify-between gap-2">
+                    <label
+                      htmlFor={`done-${task.id}`}
+                      className={`block cursor-pointer font-medium leading-snug ${
+                        st.done ? "text-dim line-through" : "text-white"
+                      }`}
+                    >
+                      {t(task.title, locale)}
+                    </label>
+                    {unlocked && task.isCustom && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(c.deleteConfirmTask)) removeTask(task.id);
+                        }}
+                        aria-label="Delete task"
+                        className="shrink-0 text-dim hover:text-lime"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
                   {task.detail && (
                     <p className="mt-1 text-sm text-dim">{t(task.detail, locale)}</p>
                   )}
@@ -588,6 +932,9 @@ function MilestoneDetail({
             </li>
           );
         })}
+        {unlocked && (
+          <AddTaskForm locale={locale} milestoneId={milestone.id} addTask={addTask} />
+        )}
       </ul>
     </div>
   );
@@ -605,12 +952,16 @@ function timeAgo(date: Date | null, locale: Locale): string {
   return locale === "en" ? `${days}d ago` : `il y a ${days} j`;
 }
 
-function describeEntry(entry: HistoryEntry, locale: Locale): string {
+function describeEntry(
+  entry: HistoryEntry,
+  locale: Locale,
+  taskLabelById: Record<string, Localized>
+): string {
   if (entry.field === "reset") {
     return locale === "en" ? "reset the entire board" : "a réinitialisé tout le tableau";
   }
-  const task = entry.taskId ? taskById(entry.taskId) : undefined;
-  const label = task ? t(task.title, locale) : entry.taskId ?? (locale === "en" ? "a task" : "une tâche");
+  const taskTitle = entry.taskId ? taskLabelById[entry.taskId] : undefined;
+  const label = taskTitle ? t(taskTitle, locale) : entry.taskId ?? (locale === "en" ? "a task" : "une tâche");
   switch (entry.field) {
     case "done":
       return entry.value
@@ -628,7 +979,13 @@ function describeEntry(entry: HistoryEntry, locale: Locale): string {
   }
 }
 
-function HistoryPanel({ locale }: { locale: Locale }) {
+function HistoryPanel({
+  locale,
+  taskLabelById,
+}: {
+  locale: Locale;
+  taskLabelById: Record<string, Localized>;
+}) {
   const c = COPY[locale];
   const entries = useHistory(50);
   const [open, setOpen] = useState(false);
@@ -655,7 +1012,7 @@ function HistoryPanel({ locale }: { locale: Locale }) {
             <li key={entry.id} className="flex items-baseline justify-between gap-4 border-b border-line p-3 text-sm last:border-b-0">
               <span className="text-mist">
                 <span className="font-semibold text-lime">{entry.actorName}</span>{" "}
-                {describeEntry(entry, locale)}
+                {describeEntry(entry, locale, taskLabelById)}
               </span>
               <span className="shrink-0 text-xs text-dim">{timeAgo(entry.at, locale)}</span>
             </li>
