@@ -1047,25 +1047,27 @@ function MilestoneDetail({
                     <p className="mt-1 text-sm text-dim">{t(task.detail, locale)}</p>
                   )}
 
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div className="mt-3">
                     <span className="text-[11px] uppercase tracking-widest text-dim">
                       {c.filterByStatus}
                     </span>
-                    {STATUS_OPTIONS.map((s) => (
-                      <button
-                        key={s}
-                        disabled={!unlocked}
-                        onClick={() => update(task.id, { status: s })}
-                        aria-pressed={st.status === s}
-                        className={`border px-3 py-1 text-xs font-semibold uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40 ${
-                          st.status === s
-                            ? "border-lime bg-lime text-ink"
-                            : "border-line text-dim hover:border-mist hover:text-mist"
-                        }`}
-                      >
-                        {statusLabel(s, locale)}
-                      </button>
-                    ))}
+                    <div className="mt-1 grid grid-cols-3 gap-1">
+                      {STATUS_OPTIONS.map((s) => (
+                        <button
+                          key={s}
+                          disabled={!unlocked}
+                          onClick={() => update(task.id, { status: s })}
+                          aria-pressed={st.status === s}
+                          className={`border px-1 py-1 text-center text-[10px] font-semibold uppercase leading-tight disabled:cursor-not-allowed disabled:opacity-40 ${
+                            st.status === s
+                              ? "border-lime bg-lime text-ink"
+                              : "border-line text-dim hover:border-mist hover:text-mist"
+                          }`}
+                        >
+                          {statusLabel(s, locale)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
