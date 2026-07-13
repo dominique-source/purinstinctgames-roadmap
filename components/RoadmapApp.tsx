@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   SPRINT,
   phases,
@@ -141,12 +141,16 @@ export default function RoadmapApp() {
     customMilestones,
     customTasks,
     customCriteria,
+    taskEdits,
     addMilestone,
     addTask,
     addCriterion,
     removeMilestone,
     removeTask,
     removeCriterion,
+    updateCustomTask,
+    editStaticTask,
+    deleteStaticTask,
   } = useCustomContent();
   const [selectedId, setSelectedId] = useState<string>(allMilestones[0].id);
   const [locale, setLocale] = useState<Locale>("en");
@@ -178,7 +182,20 @@ export default function RoadmapApp() {
 
       const staticMilestones: RenderMilestone[] = phase.milestones.map((m) => ({
         ...m,
-        tasks: [...m.tasks, ...tasksFor(m.id)],
+        tasks: [
+          ...m.tasks
+            .filter((task) => !taskEdits[task.id]?.deleted)
+            .map((task) => {
+              const edit = taskEdits[task.id];
+              if (!edit) return task;
+              return {
+                ...task,
+                title: edit.title ? wrap(edit.title) : task.title,
+                detail: edit.detail !== undefined ? (edit.detail ? wrap(edit.detail) : undefined) : task.detail,
+              };
+            }),
+          ...tasksFor(m.id),
+        ],
       }));
 
       const extraMilestones: RenderMilestone[] = customMilestones
@@ -199,7 +216,7 @@ export default function RoadmapApp() {
 
       return { ...phase, milestones: [...staticMilestones, ...extraMilestones] };
     });
-  }, [customMilestones, customTasks]);
+  }, [customMilestones, customTasks, taskEdits]);
 
   const mergedAllMilestones = useMemo(
     () => mergedPhases.flatMap((p) => p.milestones),
@@ -249,6 +266,17 @@ export default function RoadmapApp() {
         const effective = st?.owner ?? t.suggestedOwner;
         return effective === owner && !(st?.done ?? false);
       }).length;
+
+  const handleEditTask = useCallback(
+    (task: RenderTask, patch: { title: string; detail: string }) =>
+      task.isCustom ? updateCustomTask(task.id, patch) : editStaticTask(task.id, patch),
+    [updateCustomTask, editStaticTask]
+  );
+
+  const handleDeleteTask = useCallback(
+    (task: RenderTask) => (task.isCustom ? removeTask(task.id) : deleteStaticTask(task.id)),
+    [removeTask, deleteStaticTask]
+  );
 
   if (authError) {
     return (
@@ -401,7 +429,8 @@ export default function RoadmapApp() {
             update={update}
             unlocked={unlocked}
             addTask={addTask}
-            removeTask={removeTask}
+            onEditTask={handleEditTask}
+            onDeleteTask={handleDeleteTask}
           />
         </aside>
       </div>
@@ -826,6 +855,67 @@ function AddTaskForm({
   );
 }
 
+function EditTaskForm({
+  locale,
+  task,
+  onEditTask,
+  onCancel,
+}: {
+  locale: Locale;
+  task: RenderTask;
+  onEditTask: (task: RenderTask, patch: { title: string; detail: string }) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const c = COPY[locale];
+  const [title, setTitle] = useState(t(task.title, locale));
+  const [detail, setDetail] = useState(task.detail ? t(task.detail, locale) : "");
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        setSaving(true);
+        await onEditTask(task, { title: title.trim(), detail: detail.trim() });
+        setSaving(false);
+        onCancel();
+      }}
+      className="flex flex-col gap-2"
+    >
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder={c.taskTitlePlaceholder}
+        autoFocus
+        className="border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim"
+      />
+      <input
+        value={detail}
+        onChange={(e) => setDetail(e.target.value)}
+        placeholder={c.taskDetailPlaceholder}
+        className="border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim"
+      />
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving || !title.trim()}
+          className="border border-lime bg-lime px-3 py-2 text-xs font-semibold uppercase tracking-widest text-ink disabled:opacity-50"
+        >
+          {saving ? "…" : c.save}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-mist hover:text-mist"
+        >
+          {c.cancel}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function MilestoneDetail({
   milestone,
   locale,
@@ -833,7 +923,8 @@ function MilestoneDetail({
   update,
   unlocked,
   addTask,
-  removeTask,
+  onEditTask,
+  onDeleteTask,
 }: {
   milestone: RenderMilestone;
   locale: Locale;
@@ -841,8 +932,10 @@ function MilestoneDetail({
   update: ReturnType<typeof useProgress>["update"];
   unlocked: boolean;
   addTask: (milestoneId: string, title: string, detail: string, suggestedOwner: Owner) => Promise<void>;
-  removeTask: (id: string) => Promise<void>;
+  onEditTask: (task: RenderTask, patch: { title: string; detail: string }) => Promise<void>;
+  onDeleteTask: (task: RenderTask) => Promise<void>;
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const c = COPY[locale];
   const done = milestone.tasks.filter((t) => getState(t.id).done).length;
   return (
@@ -867,6 +960,18 @@ function MilestoneDetail({
         {milestone.tasks.map((task) => {
           const st = getState(task.id);
           const owner = st.owner ?? task.suggestedOwner;
+          if (editingId === task.id) {
+            return (
+              <li key={task.id} className="border-b border-line p-5 last:border-b-0">
+                <EditTaskForm
+                  locale={locale}
+                  task={task}
+                  onEditTask={onEditTask}
+                  onCancel={() => setEditingId(null)}
+                />
+              </li>
+            );
+          }
           return (
             <li key={task.id} className="border-b border-line p-5 last:border-b-0">
               <div className="flex items-start gap-3">
@@ -889,16 +994,25 @@ function MilestoneDetail({
                     >
                       {t(task.title, locale)}
                     </label>
-                    {unlocked && task.isCustom && (
-                      <button
-                        onClick={() => {
-                          if (window.confirm(c.deleteConfirmTask)) removeTask(task.id);
-                        }}
-                        aria-label="Delete task"
-                        className="shrink-0 text-dim hover:text-lime"
-                      >
-                        ×
-                      </button>
+                    {unlocked && (
+                      <span className="flex shrink-0 items-center gap-2">
+                        <button
+                          onClick={() => setEditingId(task.id)}
+                          aria-label="Edit task"
+                          className="text-dim hover:text-lime"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(c.deleteConfirmTask)) onDeleteTask(task);
+                          }}
+                          aria-label="Delete task"
+                          className="text-dim hover:text-lime"
+                        >
+                          ×
+                        </button>
+                      </span>
                     )}
                   </div>
                   {task.detail && (

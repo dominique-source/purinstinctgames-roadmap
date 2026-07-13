@@ -50,6 +50,13 @@ service cloud.firestore {
       allow create, update, delete: if isUnlocked();
     }
 
+    // Overlay for editing/soft-deleting a task from the fixed M1-M12 plan
+    // without touching lib/roadmap.ts. Doc id == the static task id.
+    match /taskEdits/{id} {
+      allow read: if true;
+      allow create, update, delete: if isUnlocked();
+    }
+
     // Append-only audit log — never edited or deleted once written.
     match /history/{entryId} {
       allow read: if true;
