@@ -19,11 +19,13 @@ import {
 import { useProgress, countDone, getSavedActorName, type ProgressMap, type TaskStatus } from "@/lib/useProgress";
 import { useHistory, type HistoryEntry } from "@/lib/useHistory";
 import { useCustomContent } from "@/lib/useCustomContent";
+import { useContacts, type Contact, type ContactStatus } from "@/lib/useContacts";
 
 const OWNER_OPTIONS: Owner[] = ["Dominique", "François", "Open"];
 const ACTOR_OPTIONS: Owner[] = ["Dominique", "François"];
 const TRACK_OPTIONS: Milestone["track"][] = ["Raise", "Games", "INSTINCT", "Partners"];
 const STATUS_OPTIONS: TaskStatus[] = ["todo", "in_progress", "done"];
+const CONTACT_STATUS_OPTIONS: ContactStatus[] = ["not_contacted", "intro_done", "in_discussion", "yes", "no", "pending"];
 const LOCALE_KEY = "purinstinct-roadmap-locale";
 
 type RenderTask = Task & { isCustom?: boolean };
@@ -85,6 +87,17 @@ const COPY = {
     filterByStatus: "Status",
     noMatchingTasks: "No tasks match these filters.",
     matchingTasks: (n: number) => `${n} matching tasks`,
+    contacts: "Contacts",
+    noContacts: "No contacts yet.",
+    addContactsPlaceholder: "One name per line…",
+    addContactsButton: "+ Add contacts",
+    contactNotContacted: "Not contacted",
+    contactIntroDone: "Intro done",
+    contactInDiscussion: "In discussion",
+    contactYes: "Yes",
+    contactNo: "No",
+    contactPending: "Pending",
+    removeContact: "Remove contact",
   },
   fr: {
     tagline: "PürInstinct · Le sport à l'état pur",
@@ -135,6 +148,17 @@ const COPY = {
     filterByStatus: "Statut",
     noMatchingTasks: "Aucune tâche ne correspond à ces filtres.",
     matchingTasks: (n: number) => `${n} tâches correspondantes`,
+    contacts: "Contacts",
+    noContacts: "Aucun contact pour l'instant.",
+    addContactsPlaceholder: "Un nom par ligne…",
+    addContactsButton: "+ Ajouter des contacts",
+    contactNotContacted: "Non contacté",
+    contactIntroDone: "Intro faite",
+    contactInDiscussion: "En discussion",
+    contactYes: "Oui",
+    contactNo: "Non",
+    contactPending: "En attente",
+    removeContact: "Retirer le contact",
   },
 } as const;
 
@@ -145,6 +169,18 @@ function ownerLabel(owner: Owner, locale: Locale): string {
 function statusLabel(status: TaskStatus, locale: Locale): string {
   const c = COPY[locale];
   return status === "todo" ? c.statusTodo : status === "in_progress" ? c.statusInProgress : c.statusDone;
+}
+
+function contactStatusLabel(status: ContactStatus, locale: Locale): string {
+  const c = COPY[locale];
+  switch (status) {
+    case "not_contacted": return c.contactNotContacted;
+    case "intro_done": return c.contactIntroDone;
+    case "in_discussion": return c.contactInDiscussion;
+    case "yes": return c.contactYes;
+    case "no": return c.contactNo;
+    case "pending": return c.contactPending;
+  }
 }
 
 export default function RoadmapApp() {
@@ -174,6 +210,7 @@ export default function RoadmapApp() {
     editStaticTask,
     deleteStaticTask,
   } = useCustomContent();
+  const { contacts, addContacts, updateContactStatus, removeContact } = useContacts();
   const [selectedId, setSelectedId] = useState<string>(allMilestones[0].id);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [locale, setLocale] = useState<Locale>("en");
@@ -295,6 +332,14 @@ export default function RoadmapApp() {
     () => mergedAllMilestones.flatMap((m) => m.tasks.map((task) => ({ milestone: m, task }))),
     [mergedAllMilestones]
   );
+
+  const contactsByTask = useMemo(() => {
+    const map: Record<string, Contact[]> = {};
+    contacts.forEach((ct) => {
+      (map[ct.taskId] ??= []).push(ct);
+    });
+    return map;
+  }, [contacts]);
 
   const handleEditTask = useCallback(
     (task: RenderTask, patch: { title: string; detail: string }) =>
@@ -481,6 +526,10 @@ export default function RoadmapApp() {
             onDeleteTask={handleDeleteTask}
             editingTaskId={editingTaskId}
             setEditingTaskId={setEditingTaskId}
+            contactsByTask={contactsByTask}
+            addContacts={addContacts}
+            updateContactStatus={updateContactStatus}
+            removeContact={removeContact}
           />
         </aside>
       </div>
@@ -966,6 +1015,102 @@ function EditTaskForm({
   );
 }
 
+function TaskContacts({
+  locale,
+  taskId,
+  contacts,
+  unlocked,
+  addContacts,
+  updateContactStatus,
+  removeContact,
+}: {
+  locale: Locale;
+  taskId: string;
+  contacts: Contact[];
+  unlocked: boolean;
+  addContacts: (taskId: string, names: string[]) => Promise<void>;
+  updateContactStatus: (id: string, status: ContactStatus) => Promise<void>;
+  removeContact: (id: string) => Promise<void>;
+}) {
+  const c = COPY[locale];
+  const [open, setOpen] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="text-[11px] uppercase tracking-widest text-dim hover:text-lime"
+      >
+        {open ? c.hide : c.show} · {c.contacts} ({contacts.length})
+      </button>
+      {open && (
+        <div className="mt-2 flex flex-col gap-2">
+          <ul className="flex flex-col gap-1">
+            {contacts.length === 0 && <li className="text-xs text-dim">{c.noContacts}</li>}
+            {contacts.map((contact) => (
+              <li key={contact.id} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-mist">{contact.name}</span>
+                <select
+                  disabled={!unlocked}
+                  value={contact.status}
+                  onChange={(e) => updateContactStatus(contact.id, e.target.value as ContactStatus)}
+                  className="border border-line bg-ink px-1 py-1 text-xs text-mist disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {CONTACT_STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {contactStatusLabel(s, locale)}
+                    </option>
+                  ))}
+                </select>
+                {unlocked && (
+                  <button
+                    onClick={() => removeContact(contact.id)}
+                    aria-label={c.removeContact}
+                    className="shrink-0 text-dim hover:text-lime"
+                  >
+                    ×
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {unlocked && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const names = bulkText.split("\n").map((n) => n.trim()).filter(Boolean);
+                if (!names.length) return;
+                setAdding(true);
+                await addContacts(taskId, names);
+                setAdding(false);
+                setBulkText("");
+              }}
+              className="flex flex-col gap-2"
+            >
+              <textarea
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={c.addContactsPlaceholder}
+                rows={3}
+                className="w-full border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim"
+              />
+              <button
+                type="submit"
+                disabled={adding || !bulkText.trim()}
+                className="self-start border border-lime bg-lime px-3 py-2 text-xs font-semibold uppercase tracking-widest text-ink disabled:opacity-50"
+              >
+                {adding ? "…" : c.addContactsButton}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MilestoneDetail({
   milestone,
   locale,
@@ -977,6 +1122,10 @@ function MilestoneDetail({
   onDeleteTask,
   editingTaskId,
   setEditingTaskId,
+  contactsByTask,
+  addContacts,
+  updateContactStatus,
+  removeContact,
 }: {
   milestone: RenderMilestone;
   locale: Locale;
@@ -988,6 +1137,10 @@ function MilestoneDetail({
   onDeleteTask: (task: RenderTask) => Promise<void>;
   editingTaskId: string | null;
   setEditingTaskId: (id: string | null) => void;
+  contactsByTask: Record<string, Contact[]>;
+  addContacts: (taskId: string, names: string[]) => Promise<void>;
+  updateContactStatus: (id: string, status: ContactStatus) => Promise<void>;
+  removeContact: (id: string) => Promise<void>;
 }) {
   const c = COPY[locale];
   const done = milestone.tasks.filter((t) => getState(t.id).status === "done").length;
@@ -1124,6 +1277,16 @@ function MilestoneDetail({
                     placeholder={c.notesPlaceholder}
                     rows={st.notes ? Math.min(6, st.notes.split("\n").length + 1) : 2}
                     className="mt-3 w-full border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+
+                  <TaskContacts
+                    locale={locale}
+                    taskId={task.id}
+                    contacts={contactsByTask[task.id] ?? []}
+                    unlocked={unlocked}
+                    addContacts={addContacts}
+                    updateContactStatus={updateContactStatus}
+                    removeContact={removeContact}
                   />
                 </div>
               </div>
