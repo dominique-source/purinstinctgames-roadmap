@@ -15,15 +15,34 @@ import { allMilestones } from "./roadmap";
 import { db, ensureAnonymousAuth } from "./firebase";
 import { sha256Hex } from "./passcode";
 
+export type TaskStatus = "todo" | "in_progress" | "done";
+
 export interface TaskState {
   owner: Owner | null;
-  done: boolean;
+  status: TaskStatus;
   notes: string;
 }
 
 export type ProgressMap = Record<string, TaskState>;
 
-const EMPTY: TaskState = { owner: null, done: false, notes: "" };
+const EMPTY: TaskState = { owner: null, status: "todo", notes: "" };
+
+// Firestore docs written before the tri-state status existed only have a
+// boolean `done` — normalize those into `status` on read so old data still
+// renders correctly.
+function normalizeTaskState(data: Record<string, unknown>): TaskState {
+  const status: TaskStatus =
+    data.status === "in_progress" || data.status === "done" || data.status === "todo"
+      ? data.status
+      : data.done
+      ? "done"
+      : "todo";
+  return {
+    owner: (data.owner as Owner | null) ?? null,
+    status,
+    notes: (data.notes as string) ?? "",
+  };
+}
 const ACTOR_NAME_KEY = "purinstinct-roadmap-actor";
 
 export function getSavedActorName(): string | null {
@@ -57,7 +76,7 @@ export function useProgress() {
         unsubTasks = onSnapshot(collection(firestore, "tasks"), (snap) => {
           const next: ProgressMap = {};
           snap.forEach((d) => {
-            next[d.id] = { ...EMPTY, ...(d.data() as Partial<TaskState>) };
+            next[d.id] = normalizeTaskState(d.data());
           });
           setProgress(next);
           setReady(true);
@@ -153,5 +172,5 @@ export function useProgress() {
 }
 
 export function countDone(progress: ProgressMap, taskIds: string[]): number {
-  return taskIds.reduce((n, id) => n + (progress[id]?.done ? 1 : 0), 0);
+  return taskIds.reduce((n, id) => n + (progress[id]?.status === "done" ? 1 : 0), 0);
 }

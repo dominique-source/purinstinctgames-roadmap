@@ -16,13 +16,14 @@ import {
   type Criterion,
   type Owner,
 } from "@/lib/roadmap";
-import { useProgress, countDone, getSavedActorName } from "@/lib/useProgress";
+import { useProgress, countDone, getSavedActorName, type ProgressMap, type TaskStatus } from "@/lib/useProgress";
 import { useHistory, type HistoryEntry } from "@/lib/useHistory";
 import { useCustomContent } from "@/lib/useCustomContent";
 
 const OWNER_OPTIONS: Owner[] = ["Dominique", "François", "Open"];
 const ACTOR_OPTIONS: Owner[] = ["Dominique", "François"];
 const TRACK_OPTIONS: Milestone["track"][] = ["Raise", "Games", "INSTINCT", "Partners"];
+const STATUS_OPTIONS: TaskStatus[] = ["todo", "in_progress", "done"];
 const LOCALE_KEY = "purinstinct-roadmap-locale";
 
 type RenderTask = Task & { isCustom?: boolean };
@@ -76,6 +77,14 @@ const COPY = {
     addCriterion: "+ Add criterion",
     criterionPlaceholder: "Criterion",
     deleteConfirmCriterion: "Delete this criterion?",
+    statusTodo: "Not started",
+    statusInProgress: "In development",
+    statusDone: "Done",
+    filterTasks: "Filter tasks",
+    filterByOwner: "Owner",
+    filterByStatus: "Status",
+    noMatchingTasks: "No tasks match these filters.",
+    matchingTasks: (n: number) => `${n} matching tasks`,
   },
   fr: {
     tagline: "PürInstinct · Le sport à l'état pur",
@@ -118,11 +127,24 @@ const COPY = {
     addCriterion: "+ Ajouter un critère",
     criterionPlaceholder: "Critère",
     deleteConfirmCriterion: "Supprimer ce critère?",
+    statusTodo: "Non commencée",
+    statusInProgress: "En développement",
+    statusDone: "Complétée",
+    filterTasks: "Filtrer les tâches",
+    filterByOwner: "Responsable",
+    filterByStatus: "Statut",
+    noMatchingTasks: "Aucune tâche ne correspond à ces filtres.",
+    matchingTasks: (n: number) => `${n} tâches correspondantes`,
   },
 } as const;
 
 function ownerLabel(owner: Owner, locale: Locale): string {
   return owner === "Open" ? COPY[locale].toAssign : owner;
+}
+
+function statusLabel(status: TaskStatus, locale: Locale): string {
+  const c = COPY[locale];
+  return status === "todo" ? c.statusTodo : status === "in_progress" ? c.statusInProgress : c.statusDone;
 }
 
 export default function RoadmapApp() {
@@ -264,8 +286,13 @@ export default function RoadmapApp() {
       .filter((t) => {
         const st = progress[t.id];
         const effective = st?.owner ?? t.suggestedOwner;
-        return effective === owner && !(st?.done ?? false);
+        return effective === owner && st?.status !== "done";
       }).length;
+
+  const allTaskRows = useMemo(
+    () => mergedAllMilestones.flatMap((m) => m.tasks.map((task) => ({ milestone: m, task }))),
+    [mergedAllMilestones]
+  );
 
   const handleEditTask = useCallback(
     (task: RenderTask, patch: { title: string; detail: string }) =>
@@ -347,6 +374,13 @@ export default function RoadmapApp() {
           />
         </div>
       </header>
+
+      <TaskFilterPanel
+        locale={locale}
+        rows={allTaskRows}
+        progress={progress}
+        onJump={setSelectedId}
+      />
 
       {/* ============================== BODY ============================== */}
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
@@ -937,7 +971,7 @@ function MilestoneDetail({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const c = COPY[locale];
-  const done = milestone.tasks.filter((t) => getState(t.id).done).length;
+  const done = milestone.tasks.filter((t) => getState(t.id).status === "done").length;
   return (
     <div className="border border-line bg-panel">
       <div
@@ -975,25 +1009,19 @@ function MilestoneDetail({
           return (
             <li key={task.id} className="border-b border-line p-5 last:border-b-0">
               <div className="flex items-start gap-3">
-                <input
-                  id={`done-${task.id}`}
-                  type="checkbox"
-                  checked={st.done}
-                  disabled={!unlocked}
-                  onChange={(e) => update(task.id, { done: e.target.checked })}
-                  className="mt-1 h-5 w-5 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label={`Mark "${t(task.title, locale)}" complete`}
-                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
-                    <label
-                      htmlFor={`done-${task.id}`}
-                      className={`block cursor-pointer font-medium leading-snug ${
-                        st.done ? "text-dim line-through" : "text-white"
+                    <span
+                      className={`block font-medium leading-snug ${
+                        st.status === "done"
+                          ? "text-dim line-through"
+                          : st.status === "in_progress"
+                          ? "text-lime"
+                          : "text-white"
                       }`}
                     >
                       {t(task.title, locale)}
-                    </label>
+                    </span>
                     {unlocked && (
                       <span className="flex shrink-0 items-center gap-2">
                         <button
@@ -1020,6 +1048,27 @@ function MilestoneDetail({
                   )}
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] uppercase tracking-widest text-dim">
+                      {c.filterByStatus}
+                    </span>
+                    {STATUS_OPTIONS.map((s) => (
+                      <button
+                        key={s}
+                        disabled={!unlocked}
+                        onClick={() => update(task.id, { status: s })}
+                        aria-pressed={st.status === s}
+                        className={`border px-3 py-1 text-xs font-semibold uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40 ${
+                          st.status === s
+                            ? "border-lime bg-lime text-ink"
+                            : "border-line text-dim hover:border-mist hover:text-mist"
+                        }`}
+                      >
+                        {statusLabel(s, locale)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="text-[11px] uppercase tracking-widest text-dim">
                       {c.owner}
                     </span>
@@ -1150,7 +1199,7 @@ function CheckpointBlock({
 }) {
   const c = COPY[locale];
   const total = checkpoint.criteria.length;
-  const done = checkpoint.criteria.filter((cr) => getState(cr.id).done).length;
+  const done = checkpoint.criteria.filter((cr) => getState(cr.id).status === "done").length;
   const pct = total ? Math.round((done / total) * 100) : 0;
 
   return (
@@ -1176,15 +1225,15 @@ function CheckpointBlock({
                 <input
                   id={`crit-${crit.id}`}
                   type="checkbox"
-                  checked={st.done}
+                  checked={st.status === "done"}
                   disabled={!unlocked}
-                  onChange={(e) => update(crit.id, { done: e.target.checked })}
+                  onChange={(e) => update(crit.id, { status: e.target.checked ? "done" : "todo" })}
                   className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label={`Mark "${t(crit.text, locale)}" done`}
                 />
                 <label
                   htmlFor={`crit-${crit.id}`}
-                  className={`flex-1 cursor-pointer ${st.done ? "text-dim line-through" : ""}`}
+                  className={`flex-1 cursor-pointer ${st.status === "done" ? "text-dim line-through" : ""}`}
                 >
                   {t(crit.text, locale)}
                 </label>
@@ -1240,6 +1289,12 @@ function describeEntry(
       return entry.value
         ? (locale === "en" ? `marked "${label}" done` : `a marqué « ${label} » complétée`)
         : (locale === "en" ? `reopened "${label}"` : `a rouvert « ${label} »`);
+    case "status": {
+      const status = entry.value as TaskStatus;
+      if (status === "done") return locale === "en" ? `marked "${label}" done` : `a marqué « ${label} » complétée`;
+      if (status === "in_progress") return locale === "en" ? `marked "${label}" in development` : `a marqué « ${label} » en développement`;
+      return locale === "en" ? `reset "${label}" to not started` : `a remis « ${label} » à non commencée`;
+    }
     case "owner": {
       const ownerValue = (entry.value as Owner | null) ?? "Open";
       const shown = ownerLabel(ownerValue, locale);
@@ -1250,6 +1305,139 @@ function describeEntry(
     default:
       return locale === "en" ? `updated "${label}"` : `a modifié « ${label} »`;
   }
+}
+
+function TaskFilterPanel({
+  locale,
+  rows,
+  progress,
+  onJump,
+}: {
+  locale: Locale;
+  rows: { milestone: RenderMilestone; task: RenderTask }[];
+  progress: ProgressMap;
+  onJump: (milestoneId: string) => void;
+}) {
+  const c = COPY[locale];
+  const [open, setOpen] = useState(false);
+  const [ownerFilter, setOwnerFilter] = useState<Set<Owner>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<Set<TaskStatus>>(new Set());
+
+  const toggleOwner = (o: Owner) =>
+    setOwnerFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(o)) next.delete(o);
+      else next.add(o);
+      return next;
+    });
+
+  const toggleStatus = (s: TaskStatus) =>
+    setStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+
+  const filtered = useMemo(
+    () =>
+      rows.filter(({ task }) => {
+        const st = progress[task.id];
+        const effectiveOwner = st?.owner ?? task.suggestedOwner;
+        const effectiveStatus = st?.status ?? "todo";
+        const ownerOk = ownerFilter.size === 0 || ownerFilter.has(effectiveOwner);
+        const statusOk = statusFilter.size === 0 || statusFilter.has(effectiveStatus);
+        return ownerOk && statusOk;
+      }),
+    [rows, progress, ownerFilter, statusFilter]
+  );
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mb-8 border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
+      >
+        {c.filterTasks}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mb-8 border border-line bg-panel p-4">
+      <div className="flex items-center justify-between">
+        <span className="font-display text-xl font-black italic uppercase">{c.filterTasks}</span>
+        <button
+          onClick={() => setOpen(false)}
+          className="text-xs uppercase tracking-widest text-dim hover:text-lime"
+        >
+          {c.hide}
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-widest text-dim">{c.filterByOwner}</span>
+        {OWNER_OPTIONS.map((o) => (
+          <button
+            key={o}
+            onClick={() => toggleOwner(o)}
+            aria-pressed={ownerFilter.has(o)}
+            className={`border px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
+              ownerFilter.has(o)
+                ? "border-lime bg-lime text-ink"
+                : "border-line text-dim hover:border-mist hover:text-mist"
+            }`}
+          >
+            {ownerLabel(o, locale)}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-widest text-dim">{c.filterByStatus}</span>
+        {STATUS_OPTIONS.map((s) => (
+          <button
+            key={s}
+            onClick={() => toggleStatus(s)}
+            aria-pressed={statusFilter.has(s)}
+            className={`border px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
+              statusFilter.has(s)
+                ? "border-lime bg-lime text-ink"
+                : "border-line text-dim hover:border-mist hover:text-mist"
+            }`}
+          >
+            {statusLabel(s, locale)}
+          </button>
+        ))}
+      </div>
+
+      <p className="mt-3 text-xs uppercase tracking-widest text-dim">{c.matchingTasks(filtered.length)}</p>
+      <ul className="mt-2 max-h-[420px] overflow-y-auto border-t border-line">
+        {filtered.length === 0 && <li className="p-3 text-sm text-dim">{c.noMatchingTasks}</li>}
+        {filtered.map(({ milestone, task }) => {
+          const st = progress[task.id];
+          const owner = st?.owner ?? task.suggestedOwner;
+          const status = st?.status ?? "todo";
+          return (
+            <li key={task.id} className="border-b border-line last:border-b-0">
+              <button
+                onClick={() => onJump(milestone.id)}
+                className="flex w-full items-baseline justify-between gap-2 p-3 text-left hover:text-lime"
+              >
+                <span className="text-sm">
+                  <span className="text-dim">{milestone.code} · </span>
+                  {t(task.title, locale)}
+                </span>
+                <span className="shrink-0 text-xs uppercase tracking-widest text-dim">
+                  {ownerLabel(owner, locale)} · {statusLabel(status, locale)}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 function HistoryPanel({
