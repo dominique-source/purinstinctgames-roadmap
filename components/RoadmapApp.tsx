@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   SPRINT,
   phases,
@@ -175,8 +175,10 @@ export default function RoadmapApp() {
     deleteStaticTask,
   } = useCustomContent();
   const [selectedId, setSelectedId] = useState<string>(allMilestones[0].id);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [locale, setLocale] = useState<Locale>("en");
   const c = COPY[locale];
+  const asideRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(LOCALE_KEY);
@@ -305,6 +307,18 @@ export default function RoadmapApp() {
     [removeTask, deleteStaticTask]
   );
 
+  const jumpToTask = useCallback(
+    (milestoneId: string, taskId: string) => {
+      setSelectedId(milestoneId);
+      setEditingTaskId(unlocked ? taskId : null);
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-task-id="${taskId}"]`);
+        el?.scrollIntoView({ block: "center" });
+      });
+    },
+    [unlocked]
+  );
+
   if (authError) {
     return (
       <div className="mx-auto max-w-xl px-4 py-24 text-center">
@@ -379,7 +393,7 @@ export default function RoadmapApp() {
         locale={locale}
         rows={allTaskRows}
         progress={progress}
-        onJump={setSelectedId}
+        onJump={jumpToTask}
       />
 
       {/* ============================== BODY ============================== */}
@@ -455,7 +469,7 @@ export default function RoadmapApp() {
         </section>
 
         {/* --------------------------- DETAIL PANEL --------------------------- */}
-        <aside className="lg:sticky lg:top-6 lg:h-fit" aria-label="Milestone detail">
+        <aside ref={asideRef} className="lg:sticky lg:top-6 lg:h-fit" aria-label="Milestone detail">
           <MilestoneDetail
             milestone={selected}
             locale={locale}
@@ -465,6 +479,8 @@ export default function RoadmapApp() {
             addTask={addTask}
             onEditTask={handleEditTask}
             onDeleteTask={handleDeleteTask}
+            editingTaskId={editingTaskId}
+            setEditingTaskId={setEditingTaskId}
           />
         </aside>
       </div>
@@ -959,6 +975,8 @@ function MilestoneDetail({
   addTask,
   onEditTask,
   onDeleteTask,
+  editingTaskId,
+  setEditingTaskId,
 }: {
   milestone: RenderMilestone;
   locale: Locale;
@@ -968,8 +986,9 @@ function MilestoneDetail({
   addTask: (milestoneId: string, title: string, detail: string, suggestedOwner: Owner) => Promise<void>;
   onEditTask: (task: RenderTask, patch: { title: string; detail: string }) => Promise<void>;
   onDeleteTask: (task: RenderTask) => Promise<void>;
+  editingTaskId: string | null;
+  setEditingTaskId: (id: string | null) => void;
 }) {
-  const [editingId, setEditingId] = useState<string | null>(null);
   const c = COPY[locale];
   const done = milestone.tasks.filter((t) => getState(t.id).status === "done").length;
   return (
@@ -994,20 +1013,20 @@ function MilestoneDetail({
         {milestone.tasks.map((task) => {
           const st = getState(task.id);
           const owner = st.owner ?? task.suggestedOwner;
-          if (editingId === task.id) {
+          if (editingTaskId === task.id) {
             return (
-              <li key={task.id} className="border-b border-line p-5 last:border-b-0">
+              <li key={task.id} data-task-id={task.id} className="border-b border-line p-5 last:border-b-0">
                 <EditTaskForm
                   locale={locale}
                   task={task}
                   onEditTask={onEditTask}
-                  onCancel={() => setEditingId(null)}
+                  onCancel={() => setEditingTaskId(null)}
                 />
               </li>
             );
           }
           return (
-            <li key={task.id} className="border-b border-line p-5 last:border-b-0">
+            <li key={task.id} data-task-id={task.id} className="border-b border-line p-5 last:border-b-0">
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
@@ -1025,7 +1044,7 @@ function MilestoneDetail({
                     {unlocked && (
                       <span className="flex shrink-0 items-center gap-2">
                         <button
-                          onClick={() => setEditingId(task.id)}
+                          onClick={() => setEditingTaskId(task.id)}
                           aria-label="Edit task"
                           className="text-dim hover:text-lime"
                         >
@@ -1318,7 +1337,7 @@ function TaskFilterPanel({
   locale: Locale;
   rows: { milestone: RenderMilestone; task: RenderTask }[];
   progress: ProgressMap;
-  onJump: (milestoneId: string) => void;
+  onJump: (milestoneId: string, taskId: string) => void;
 }) {
   const c = COPY[locale];
   const [open, setOpen] = useState(false);
@@ -1423,7 +1442,7 @@ function TaskFilterPanel({
           return (
             <li key={task.id} className="border-b border-line last:border-b-0">
               <button
-                onClick={() => onJump(milestone.id)}
+                onClick={() => onJump(milestone.id, task.id)}
                 className="flex w-full items-baseline justify-between gap-2 p-3 text-left hover:text-lime"
               >
                 <span className="text-sm">
