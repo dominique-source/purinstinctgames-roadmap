@@ -36,11 +36,16 @@ export interface Phase {
   milestones: Milestone[];
 }
 
+export interface Criterion {
+  id: string;
+  text: Localized;
+}
+
 export interface Checkpoint {
   id: string;
   code: string;
   day: Localized;
-  criteria: Localized[];
+  criteria: Criterion[];
   afterPhase: string; // phase id it follows
 }
 
@@ -313,33 +318,33 @@ export const checkpoints: Checkpoint[] = [
   {
     id: "c1", code: "C1", day: { en: "Day 15 · Jul 27", fr: "Jour 15 · 27 juil." }, afterPhase: "p1",
     criteria: [
-      { en: "Dataroom complete and access-tracked", fr: "Dataroom complète et accès suivi" },
-      { en: "Pitch tested on 2 friendly investors", fr: "Pitch testé auprès de 2 investisseurs amicaux" },
-      { en: "INSTINCT package shipped to first producer", fr: "Dossier INSTINCT livré au premier producteur" },
+      { id: "c1-0", text: { en: "Dataroom complete and access-tracked", fr: "Dataroom complète et accès suivi" } },
+      { id: "c1-1", text: { en: "Pitch tested on 2 friendly investors", fr: "Pitch testé auprès de 2 investisseurs amicaux" } },
+      { id: "c1-2", text: { en: "INSTINCT package shipped to first producer", fr: "Dossier INSTINCT livré au premier producteur" } },
     ],
   },
   {
     id: "c2", code: "C2", day: { en: "Day 30 · Aug 11", fr: "Jour 30 · 11 août" }, afterPhase: "p2",
     criteria: [
-      { en: "≥ 12 investor first-meetings held", fr: "≥ 12 premières rencontres investisseurs tenues" },
-      { en: "≥ 2 school-board LOIs signed", fr: "≥ 2 lettres d'intention de commissions scolaires signées" },
-      { en: "≥ 2 producer meetings completed", fr: "≥ 2 rencontres producteurs complétées" },
+      { id: "c2-0", text: { en: "≥ 12 investor first-meetings held", fr: "≥ 12 premières rencontres investisseurs tenues" } },
+      { id: "c2-1", text: { en: "≥ 2 school-board LOIs signed", fr: "≥ 2 lettres d'intention de commissions scolaires signées" } },
+      { id: "c2-2", text: { en: "≥ 2 producer meetings completed", fr: "≥ 2 rencontres producteurs complétées" } },
     ],
   },
   {
     id: "c3", code: "C3", day: { en: "Day 45 · Aug 26", fr: "Jour 45 · 26 août" }, afterPhase: "p3",
     criteria: [
-      { en: "Lead term sheet in negotiation OR ≥ $250K soft-circled", fr: "Term sheet du chef de file en négociation OU ≥ 250 K$ engagés informellement" },
-      { en: "Showcase event delivered and filmed", fr: "Événement showcase livré et filmé" },
-      { en: "evenko + RSEQ conversations at decision stage", fr: "Conversations evenko + RSEQ à l'étape décisionnelle" },
+      { id: "c3-0", text: { en: "Lead term sheet in negotiation OR ≥ $250K soft-circled", fr: "Term sheet du chef de file en négociation OU ≥ 250 K$ engagés informellement" } },
+      { id: "c3-1", text: { en: "Showcase event delivered and filmed", fr: "Événement showcase livré et filmé" } },
+      { id: "c3-2", text: { en: "evenko + RSEQ conversations at decision stage", fr: "Conversations evenko + RSEQ à l'étape décisionnelle" } },
     ],
   },
   {
     id: "c4", code: "C4", day: { en: "Day 60 · Sep 13", fr: "Jour 60 · 13 sept." }, afterPhase: "p4",
     criteria: [
-      { en: "$750K circled or closed", fr: "750 K$ engagés ou clôturés" },
-      { en: "1 producer agreement in negotiation", fr: "1 entente de producteur en négociation" },
-      { en: "≥ 4 Year-1 events contracted", fr: "≥ 4 événements An 1 sous contrat" },
+      { id: "c4-0", text: { en: "$750K circled or closed", fr: "750 K$ engagés ou clôturés" } },
+      { id: "c4-1", text: { en: "1 producer agreement in negotiation", fr: "1 entente de producteur en négociation" } },
+      { id: "c4-2", text: { en: "≥ 4 Year-1 events contracted", fr: "≥ 4 événements An 1 sous contrat" } },
     ],
   },
 ];

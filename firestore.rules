@@ -43,6 +43,13 @@ service cloud.firestore {
       allow create, update, delete: if isUnlocked();
     }
 
+    // User-added checkpoint criteria, layered on top of the fixed C1-C4
+    // criteria defined in lib/roadmap.ts.
+    match /customCriteria/{id} {
+      allow read: if true;
+      allow create, update, delete: if isUnlocked();
+    }
+
     // Append-only audit log — never edited or deleted once written.
     match /history/{entryId} {
       allow read: if true;

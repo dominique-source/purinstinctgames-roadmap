@@ -13,6 +13,7 @@ import {
   type Localized,
   type Milestone,
   type Task,
+  type Criterion,
   type Owner,
 } from "@/lib/roadmap";
 import { useProgress, countDone, getSavedActorName } from "@/lib/useProgress";
@@ -26,6 +27,8 @@ const LOCALE_KEY = "purinstinct-roadmap-locale";
 
 type RenderTask = Task & { isCustom?: boolean };
 type RenderMilestone = Omit<Milestone, "tasks"> & { tasks: RenderTask[]; isCustom?: boolean };
+type RenderCriterion = Criterion & { isCustom?: boolean };
+type RenderCheckpoint = Omit<(typeof checkpoints)[number], "criteria"> & { criteria: RenderCriterion[] };
 
 function wrap(s: string): Localized {
   return { en: s, fr: s };
@@ -70,6 +73,9 @@ const COPY = {
     taskDetailPlaceholder: "Detail (optional)",
     deleteConfirmMilestone: "Delete this milestone and its tasks?",
     deleteConfirmTask: "Delete this task?",
+    addCriterion: "+ Add criterion",
+    criterionPlaceholder: "Criterion",
+    deleteConfirmCriterion: "Delete this criterion?",
   },
   fr: {
     tagline: "PürInstinct · Le sport à l'état pur",
@@ -109,6 +115,9 @@ const COPY = {
     taskDetailPlaceholder: "Détail (optionnel)",
     deleteConfirmMilestone: "Supprimer cet onglet et ses tâches?",
     deleteConfirmTask: "Supprimer cette tâche?",
+    addCriterion: "+ Ajouter un critère",
+    criterionPlaceholder: "Critère",
+    deleteConfirmCriterion: "Supprimer ce critère?",
   },
 } as const;
 
@@ -131,10 +140,13 @@ export default function RoadmapApp() {
   const {
     customMilestones,
     customTasks,
+    customCriteria,
     addMilestone,
     addTask,
+    addCriterion,
     removeMilestone,
     removeTask,
+    removeCriterion,
   } = useCustomContent();
   const [selectedId, setSelectedId] = useState<string>(allMilestones[0].id);
   const [locale, setLocale] = useState<Locale>("en");
@@ -194,11 +206,22 @@ export default function RoadmapApp() {
     [mergedPhases]
   );
 
-  const taskLabelById = useMemo(() => {
+  const mergedCheckpoints = useMemo<RenderCheckpoint[]>(() => {
+    return checkpoints.map((cp) => {
+      const staticCriteria: RenderCriterion[] = cp.criteria.map((cr) => ({ ...cr }));
+      const extraCriteria: RenderCriterion[] = customCriteria
+        .filter((cc) => cc.checkpointId === cp.id)
+        .map((cc) => ({ id: cc.id, text: wrap(cc.text), isCustom: true }));
+      return { ...cp, criteria: [...staticCriteria, ...extraCriteria] };
+    });
+  }, [customCriteria]);
+
+  const itemLabelById = useMemo(() => {
     const map: Record<string, Localized> = {};
     mergedAllMilestones.forEach((m) => m.tasks.forEach((task) => { map[task.id] = task.title; }));
+    mergedCheckpoints.forEach((cp) => cp.criteria.forEach((cr) => { map[cr.id] = cr.text; }));
     return map;
-  }, [mergedAllMilestones]);
+  }, [mergedAllMilestones, mergedCheckpoints]);
 
   const selected = useMemo(
     () => mergedAllMilestones.find((m) => m.id === selectedId) ?? mergedAllMilestones[0],
@@ -302,7 +325,7 @@ export default function RoadmapApp() {
         {/* ------------------------------ MAP ------------------------------ */}
         <section aria-label="Roadmap map">
           {mergedPhases.map((phase) => {
-            const checkpoint = checkpoints.find((c2) => c2.afterPhase === phase.id);
+            const checkpoint = mergedCheckpoints.find((c2) => c2.afterPhase === phase.id);
             return (
               <div key={phase.id} className="relative pl-6">
                 {/* spine */}
@@ -352,30 +375,21 @@ export default function RoadmapApp() {
                 )}
 
                 {checkpoint && (
-                  <div className="mb-10 border border-lime bg-panel p-4">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <p className="font-display text-xl font-black italic uppercase text-lime">
-                        {c.checkpoint} {checkpoint.code}
-                      </p>
-                      <p className="font-display text-sm font-semibold uppercase tracking-widest text-mist">
-                        {t(checkpoint.day, locale)}
-                      </p>
-                    </div>
-                    <ul className="mt-2 grid gap-1 text-sm text-mist sm:grid-cols-3">
-                      {checkpoint.criteria.map((crit) => (
-                        <li key={t(crit, "en")} className="flex gap-2">
-                          <span className="text-lime">/</span>
-                          {t(crit, locale)}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <CheckpointBlock
+                    checkpoint={checkpoint}
+                    locale={locale}
+                    getState={get}
+                    update={update}
+                    unlocked={unlocked}
+                    addCriterion={addCriterion}
+                    removeCriterion={removeCriterion}
+                  />
                 )}
               </div>
             );
           })}
 
-          <HistoryPanel locale={locale} taskLabelById={taskLabelById} />
+          <HistoryPanel locale={locale} itemLabelById={itemLabelById} />
         </section>
 
         {/* --------------------------- DETAIL PANEL --------------------------- */}
@@ -940,6 +954,151 @@ function MilestoneDetail({
   );
 }
 
+function AddCriterionForm({
+  locale,
+  checkpointId,
+  addCriterion,
+}: {
+  locale: Locale;
+  checkpointId: string;
+  addCriterion: (checkpointId: string, text: string) => Promise<void>;
+}) {
+  const c = COPY[locale];
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs uppercase tracking-widest text-dim hover:text-lime"
+      >
+        {c.addCriterion}
+      </button>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!text.trim()) return;
+        setSaving(true);
+        await addCriterion(checkpointId, text.trim());
+        setSaving(false);
+        setText("");
+        setOpen(false);
+      }}
+      className="flex flex-wrap items-center gap-2"
+    >
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={c.criterionPlaceholder}
+        autoFocus
+        className="flex-1 border border-line bg-ink p-2 text-sm text-mist placeholder:text-dim"
+      />
+      <button
+        type="submit"
+        disabled={saving || !text.trim()}
+        className="border border-lime bg-lime px-3 py-2 text-xs font-semibold uppercase tracking-widest text-ink disabled:opacity-50"
+      >
+        {saving ? "…" : c.save}
+      </button>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-mist hover:text-mist"
+      >
+        {c.cancel}
+      </button>
+    </form>
+  );
+}
+
+function CheckpointBlock({
+  checkpoint,
+  locale,
+  getState,
+  update,
+  unlocked,
+  addCriterion,
+  removeCriterion,
+}: {
+  checkpoint: RenderCheckpoint;
+  locale: Locale;
+  getState: ReturnType<typeof useProgress>["get"];
+  update: ReturnType<typeof useProgress>["update"];
+  unlocked: boolean;
+  addCriterion: (checkpointId: string, text: string) => Promise<void>;
+  removeCriterion: (id: string) => Promise<void>;
+}) {
+  const c = COPY[locale];
+  const total = checkpoint.criteria.length;
+  const done = checkpoint.criteria.filter((cr) => getState(cr.id).done).length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+
+  return (
+    <div className="relative mb-10 overflow-hidden border border-lime bg-panel p-4">
+      <div className="absolute inset-y-0 left-0 bg-lime/15" style={{ width: `${pct}%` }} aria-hidden />
+      <div className="relative">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="font-display text-xl font-black italic uppercase text-lime">
+            {c.checkpoint} {checkpoint.code}
+          </p>
+          <div className="flex items-center gap-3">
+            <span className="font-display text-sm font-black text-lime">{done}/{total}</span>
+            <p className="font-display text-sm font-semibold uppercase tracking-widest text-mist">
+              {t(checkpoint.day, locale)}
+            </p>
+          </div>
+        </div>
+        <ul className="mt-2 grid gap-1 text-sm text-mist sm:grid-cols-3">
+          {checkpoint.criteria.map((crit) => {
+            const st = getState(crit.id);
+            return (
+              <li key={crit.id} className="flex items-start gap-2">
+                <input
+                  id={`crit-${crit.id}`}
+                  type="checkbox"
+                  checked={st.done}
+                  disabled={!unlocked}
+                  onChange={(e) => update(crit.id, { done: e.target.checked })}
+                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label={`Mark "${t(crit.text, locale)}" done`}
+                />
+                <label
+                  htmlFor={`crit-${crit.id}`}
+                  className={`flex-1 cursor-pointer ${st.done ? "text-dim line-through" : ""}`}
+                >
+                  {t(crit.text, locale)}
+                </label>
+                {unlocked && crit.isCustom && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(c.deleteConfirmCriterion)) removeCriterion(crit.id);
+                    }}
+                    aria-label="Delete criterion"
+                    className="shrink-0 text-dim hover:text-lime"
+                  >
+                    ×
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        {unlocked && (
+          <div className="mt-3">
+            <AddCriterionForm locale={locale} checkpointId={checkpoint.id} addCriterion={addCriterion} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function timeAgo(date: Date | null, locale: Locale): string {
   if (!date) return "";
   const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
@@ -955,13 +1114,13 @@ function timeAgo(date: Date | null, locale: Locale): string {
 function describeEntry(
   entry: HistoryEntry,
   locale: Locale,
-  taskLabelById: Record<string, Localized>
+  itemLabelById: Record<string, Localized>
 ): string {
   if (entry.field === "reset") {
     return locale === "en" ? "reset the entire board" : "a réinitialisé tout le tableau";
   }
-  const taskTitle = entry.taskId ? taskLabelById[entry.taskId] : undefined;
-  const label = taskTitle ? t(taskTitle, locale) : entry.taskId ?? (locale === "en" ? "a task" : "une tâche");
+  const itemTitle = entry.taskId ? itemLabelById[entry.taskId] : undefined;
+  const label = itemTitle ? t(itemTitle, locale) : entry.taskId ?? (locale === "en" ? "a task" : "une tâche");
   switch (entry.field) {
     case "done":
       return entry.value
@@ -981,10 +1140,10 @@ function describeEntry(
 
 function HistoryPanel({
   locale,
-  taskLabelById,
+  itemLabelById,
 }: {
   locale: Locale;
-  taskLabelById: Record<string, Localized>;
+  itemLabelById: Record<string, Localized>;
 }) {
   const c = COPY[locale];
   const entries = useHistory(50);
@@ -1012,7 +1171,7 @@ function HistoryPanel({
             <li key={entry.id} className="flex items-baseline justify-between gap-4 border-b border-line p-3 text-sm last:border-b-0">
               <span className="text-mist">
                 <span className="font-semibold text-lime">{entry.actorName}</span>{" "}
-                {describeEntry(entry, locale, taskLabelById)}
+                {describeEntry(entry, locale, itemLabelById)}
               </span>
               <span className="shrink-0 text-xs text-dim">{timeAgo(entry.at, locale)}</span>
             </li>

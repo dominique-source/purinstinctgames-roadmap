@@ -30,9 +30,16 @@ export interface CustomTask {
   suggestedOwner: Owner;
 }
 
+export interface CustomCriterion {
+  id: string;
+  checkpointId: string;
+  text: string;
+}
+
 export function useCustomContent() {
   const [customMilestones, setCustomMilestones] = useState<CustomMilestone[]>([]);
   const [customTasks, setCustomTasks] = useState<CustomTask[]>([]);
+  const [customCriteria, setCustomCriteria] = useState<CustomCriterion[]>([]);
 
   useEffect(() => {
     const firestore = db;
@@ -47,9 +54,15 @@ export function useCustomContent() {
         snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomTask, "id">) }))
       );
     });
+    const unsubC = onSnapshot(collection(firestore, "customCriteria"), (snap) => {
+      setCustomCriteria(
+        snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomCriterion, "id">) }))
+      );
+    });
     return () => {
       unsubM();
       unsubT();
+      unsubC();
     };
   }, []);
 
@@ -88,6 +101,18 @@ export function useCustomContent() {
     []
   );
 
+  const addCriterion = useCallback(async (checkpointId: string, text: string) => {
+    const firestore = db;
+    if (!firestore) return;
+    await ensureAnonymousAuth();
+    await addDoc(collection(firestore, "customCriteria"), {
+      checkpointId,
+      text,
+      createdBy: getSavedActorName() ?? "Unknown",
+      createdAt: serverTimestamp(),
+    });
+  }, []);
+
   const removeMilestone = useCallback(async (id: string) => {
     const firestore = db;
     if (!firestore) return;
@@ -102,5 +127,21 @@ export function useCustomContent() {
     await deleteDoc(doc(firestore, "customTasks", id));
   }, []);
 
-  return { customMilestones, customTasks, addMilestone, addTask, removeMilestone, removeTask };
+  const removeCriterion = useCallback(async (id: string) => {
+    const firestore = db;
+    if (!firestore) return;
+    await deleteDoc(doc(firestore, "customCriteria", id));
+  }, []);
+
+  return {
+    customMilestones,
+    customTasks,
+    customCriteria,
+    addMilestone,
+    addTask,
+    addCriterion,
+    removeMilestone,
+    removeTask,
+    removeCriterion,
+  };
 }
