@@ -1393,64 +1393,64 @@ function CheckpointBlock({
   const c = COPY[locale];
   const total = checkpoint.criteria.length;
   const done = checkpoint.criteria.filter((cr) => getState(cr.id).status === "done").length;
-  const pct = total ? Math.round((done / total) * 100) : 0;
 
   return (
-    <div className="relative mb-10 overflow-hidden border border-lime bg-panel p-4">
-      <div className="absolute inset-y-0 left-0 bg-lime/15" style={{ width: `${pct}%` }} aria-hidden />
-      <div className="relative">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="font-display text-xl font-black italic uppercase text-lime">
-            {c.checkpoint} {checkpoint.code}
+    <div className="mb-10 border border-lime bg-panel p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-display text-xl font-black italic uppercase text-lime">
+          {c.checkpoint} {checkpoint.code}
+        </p>
+        <div className="flex items-center gap-3">
+          <span className="font-display text-sm font-black text-lime">{done}/{total}</span>
+          <p className="font-display text-sm font-semibold uppercase tracking-widest text-mist">
+            {t(checkpoint.day, locale)}
           </p>
-          <div className="flex items-center gap-3">
-            <span className="font-display text-sm font-black text-lime">{done}/{total}</span>
-            <p className="font-display text-sm font-semibold uppercase tracking-widest text-mist">
-              {t(checkpoint.day, locale)}
-            </p>
-          </div>
         </div>
-        <ul className="mt-2 grid gap-1 text-sm text-mist sm:grid-cols-3">
-          {checkpoint.criteria.map((crit) => {
-            const st = getState(crit.id);
-            return (
-              <li key={crit.id} className="flex items-start gap-2">
-                <input
-                  id={`crit-${crit.id}`}
-                  type="checkbox"
-                  checked={st.status === "done"}
-                  disabled={!unlocked}
-                  onChange={(e) => update(crit.id, { status: e.target.checked ? "done" : "todo" })}
-                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label={`Mark "${t(crit.text, locale)}" done`}
-                />
-                <label
-                  htmlFor={`crit-${crit.id}`}
-                  className={`flex-1 cursor-pointer ${st.status === "done" ? "text-dim line-through" : ""}`}
-                >
-                  {t(crit.text, locale)}
-                </label>
-                {unlocked && crit.isCustom && (
-                  <button
-                    onClick={() => {
-                      if (window.confirm(c.deleteConfirmCriterion)) removeCriterion(crit.id);
-                    }}
-                    aria-label="Delete criterion"
-                    className="shrink-0 text-dim hover:text-lime"
-                  >
-                    ×
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-        {unlocked && (
-          <div className="mt-3">
-            <AddCriterionForm locale={locale} checkpointId={checkpoint.id} addCriterion={addCriterion} />
-          </div>
-        )}
       </div>
+      <ul className="mt-2 grid gap-1 text-sm text-mist sm:grid-cols-3">
+        {checkpoint.criteria.map((crit) => {
+          const st = getState(crit.id);
+          const isDone = st.status === "done";
+          return (
+            <li
+              key={crit.id}
+              className={`flex items-start gap-2 p-1 ${isDone ? "bg-lime/15" : ""}`}
+            >
+              <input
+                id={`crit-${crit.id}`}
+                type="checkbox"
+                checked={isDone}
+                disabled={!unlocked}
+                onChange={(e) => update(crit.id, { status: e.target.checked ? "done" : "todo" })}
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label={`Mark "${t(crit.text, locale)}" done`}
+              />
+              <label
+                htmlFor={`crit-${crit.id}`}
+                className={`flex-1 cursor-pointer ${isDone ? "text-dim line-through" : ""}`}
+              >
+                {t(crit.text, locale)}
+              </label>
+              {unlocked && crit.isCustom && (
+                <button
+                  onClick={() => {
+                    if (window.confirm(c.deleteConfirmCriterion)) removeCriterion(crit.id);
+                  }}
+                  aria-label="Delete criterion"
+                  className="shrink-0 text-dim hover:text-lime"
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {unlocked && (
+        <div className="mt-3">
+          <AddCriterionForm locale={locale} checkpointId={checkpoint.id} addCriterion={addCriterion} />
+        </div>
+      )}
     </div>
   );
 }
