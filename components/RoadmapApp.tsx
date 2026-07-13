@@ -25,7 +25,7 @@ const OWNER_OPTIONS: Owner[] = ["Dominique", "François", "Open"];
 const ACTOR_OPTIONS: Owner[] = ["Dominique", "François"];
 const TRACK_OPTIONS: Milestone["track"][] = ["Raise", "Games", "INSTINCT", "Partners"];
 const STATUS_OPTIONS: TaskStatus[] = ["todo", "in_progress", "done"];
-const CONTACT_STATUS_OPTIONS: ContactStatus[] = ["not_contacted", "intro_done", "in_discussion", "yes", "no", "pending"];
+const CONTACT_STATUS_OPTIONS: ContactStatus[] = ["not_contacted", "intro_done", "in_discussion", "pending"];
 const LOCALE_KEY = "purinstinct-roadmap-locale";
 
 type RenderTask = Task & { isCustom?: boolean };
