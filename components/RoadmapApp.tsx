@@ -1038,12 +1038,21 @@ function TaskContacts({
   const [adding, setAdding] = useState(false);
 
   return (
-    <div className="mt-3 border-t border-line pt-3">
+    <div className="mt-3">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="text-[11px] uppercase tracking-widest text-dim hover:text-lime"
+        aria-pressed={open}
+        className={`flex w-full items-center justify-between border px-3 py-2 text-xs font-semibold uppercase tracking-widest ${
+          open
+            ? "border-lime text-lime"
+            : "border-line text-dim hover:border-mist hover:text-mist"
+        }`}
       >
-        {open ? c.hide : c.show} · {c.contacts} ({contacts.length})
+        <span>
+          {c.contacts}
+          {contacts.length > 0 ? ` (${contacts.length})` : ""}
+        </span>
+        <span>{open ? c.hide : c.show}</span>
       </button>
       {open && (
         <div className="mt-2 flex flex-col gap-2">
