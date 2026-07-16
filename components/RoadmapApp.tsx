@@ -117,6 +117,8 @@ const COPY = {
     today: "Today",
     yesterday: "Yesterday",
     viewingPast: "Read-only — this day is in the past.",
+    pushToToday: "→ Today",
+    focusFullAlert: "Today's focus is already full (3/3). Clear a slot first.",
   },
   fr: {
     tagline: "PürInstinct · Le sport à l'état pur",
@@ -189,6 +191,8 @@ const COPY = {
     today: "Aujourd'hui",
     yesterday: "Hier",
     viewingPast: "Lecture seule — cette journée est passée.",
+    pushToToday: "→ Aujourd'hui",
+    focusFullAlert: "Le focus d'aujourd'hui est déjà plein (3/3). Libère une case d'abord.",
   },
 } as const;
 
@@ -1773,10 +1777,20 @@ function TodayFocusPanel({
 
   const isToday = viewedDate === today;
   const editable = unlocked && isToday;
+  const canPushToToday = unlocked && !isToday;
   const atMin = viewedDate <= HISTORY_START_KEY;
   const slots = slotsForDate(viewedDate);
   const items = derailedForDate(viewedDate);
   const dayLabel = formatDayLabel(viewedDate, today, locale);
+
+  const pushFocusToToday = (text: string) => {
+    const emptySlot = slotsForDate(today).findIndex((s) => !s?.text);
+    if (emptySlot === -1) {
+      window.alert(c.focusFullAlert);
+      return;
+    }
+    setFocusText(emptySlot, text);
+  };
 
   return (
     <div className={`mb-8 border bg-panel p-4 ${isToday ? "border-lime" : "border-line"}`}>
@@ -1839,9 +1853,17 @@ function TodayFocusPanel({
                       }`}
                     />
                   ) : (
-                    <span className={`text-sm ${isDone ? "text-dim line-through" : slot?.text ? "" : "text-dim"}`}>
+                    <span className={`flex-1 text-sm ${isDone ? "text-dim line-through" : slot?.text ? "" : "text-dim"}`}>
                       {slot?.text || "—"}
                     </span>
+                  )}
+                  {canPushToToday && slot?.text && (
+                    <button
+                      onClick={() => pushFocusToToday(slot.text)}
+                      className="shrink-0 border border-line px-2 py-1 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
+                    >
+                      {c.pushToToday}
+                    </button>
                   )}
                 </li>
               );
@@ -1863,6 +1885,14 @@ function TodayFocusPanel({
                     className="shrink-0 text-dim hover:text-lime"
                   >
                     ×
+                  </button>
+                )}
+                {canPushToToday && (
+                  <button
+                    onClick={() => addDerailed(item.text)}
+                    className="shrink-0 border border-line px-2 py-1 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
+                  >
+                    {c.pushToToday}
                   </button>
                 )}
               </li>
