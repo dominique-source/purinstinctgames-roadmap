@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   collection,
   deleteDoc,
@@ -16,11 +16,16 @@ import { getSavedActorName } from "./useProgress";
 
 export const FOCUS_SLOTS = 3;
 
+// Sprint start (matches SPRINT.range in roadmap.ts) — the earliest day
+// worth navigating back to.
+export const HISTORY_START_KEY = "2026-07-13";
+
 export interface FocusSlot {
   id: string;
   date: string;
   slot: number;
   text: string;
+  done?: boolean;
 }
 
 export interface DerailedItem {
@@ -38,6 +43,16 @@ export function todayKey(): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${m}-${day}`;
+}
+
+export function shiftDateKey(dateKey: string, deltaDays: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + deltaDays);
+  const ny = dt.getFullYear();
+  const nm = String(dt.getMonth() + 1).padStart(2, "0");
+  const nd = String(dt.getDate()).padStart(2, "0");
+  return `${ny}-${nm}-${nd}`;
 }
 
 export function useDailyFocus() {
@@ -72,18 +87,18 @@ export function useDailyFocus() {
     };
   }, []);
 
-  const slots = useMemo(
-    () =>
-      Array.from({ length: FOCUS_SLOTS }, (_, i) => allSlots.find((s) => s.date === today && s.slot === i)),
-    [allSlots, today]
+  const slotsForDate = useCallback(
+    (date: string) =>
+      Array.from({ length: FOCUS_SLOTS }, (_, i) => allSlots.find((s) => s.date === date && s.slot === i)),
+    [allSlots]
   );
 
-  const derailed = useMemo(
-    () =>
+  const derailedForDate = useCallback(
+    (date: string) =>
       allDerailed
-        .filter((d) => d.date === today)
+        .filter((d) => d.date === date)
         .sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0)),
-    [allDerailed, today]
+    [allDerailed]
   );
 
   const setFocusText = useCallback(
@@ -111,6 +126,20 @@ export function useDailyFocus() {
     [today]
   );
 
+  const setFocusDone = useCallback(
+    async (slot: number, done: boolean) => {
+      const firestore = db;
+      if (!firestore) return;
+      await ensureAnonymousAuth();
+      await setDoc(
+        doc(firestore, "focusSlots", `${today}_${slot}`),
+        { date: today, slot, done, updatedBy: getSavedActorName() ?? "Unknown", updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+    },
+    [today]
+  );
+
   const addDerailed = useCallback(
     async (text: string) => {
       const firestore = db;
@@ -132,5 +161,13 @@ export function useDailyFocus() {
     await deleteDoc(doc(firestore, "derailedTasks", id));
   }, []);
 
-  return { today, slots, derailed, setFocusText, addDerailed, removeDerailed };
+  return {
+    today,
+    slotsForDate,
+    derailedForDate,
+    setFocusText,
+    setFocusDone,
+    addDerailed,
+    removeDerailed,
+  };
 }

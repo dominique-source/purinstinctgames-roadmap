@@ -20,7 +20,14 @@ import { useProgress, countDone, getSavedActorName, type ProgressMap, type TaskS
 import { useHistory, type HistoryEntry } from "@/lib/useHistory";
 import { useCustomContent } from "@/lib/useCustomContent";
 import { useContacts, type Contact, type ContactStatus } from "@/lib/useContacts";
-import { useDailyFocus, FOCUS_SLOTS, type FocusSlot, type DerailedItem } from "@/lib/useDailyFocus";
+import {
+  useDailyFocus,
+  FOCUS_SLOTS,
+  HISTORY_START_KEY,
+  shiftDateKey,
+  type FocusSlot,
+  type DerailedItem,
+} from "@/lib/useDailyFocus";
 
 const OWNER_OPTIONS: Owner[] = ["Dominique", "François", "Open"];
 const ACTOR_OPTIONS: Owner[] = ["Dominique", "François"];
@@ -107,6 +114,9 @@ const COPY = {
     notToDoPlaceholder: "What derailed you?",
     add: "+ Add",
     removeDerailed: "Remove",
+    today: "Today",
+    yesterday: "Yesterday",
+    viewingPast: "Read-only — this day is in the past.",
   },
   fr: {
     tagline: "PürInstinct · Le sport à l'état pur",
@@ -176,6 +186,9 @@ const COPY = {
     notToDoPlaceholder: "Qu'est-ce qui t'a déconcentré?",
     add: "+ Ajouter",
     removeDerailed: "Retirer",
+    today: "Aujourd'hui",
+    yesterday: "Hier",
+    viewingPast: "Lecture seule — cette journée est passée.",
   },
 } as const;
 
@@ -211,7 +224,15 @@ export default function RoadmapApp() {
     unlock,
     authError,
   } = useProgress();
-  const { slots: focusSlots, derailed, setFocusText, addDerailed, removeDerailed } = useDailyFocus();
+  const {
+    today: focusToday,
+    slotsForDate,
+    derailedForDate,
+    setFocusText,
+    setFocusDone,
+    addDerailed,
+    removeDerailed,
+  } = useDailyFocus();
   const {
     customMilestones,
     customTasks,
@@ -496,9 +517,11 @@ export default function RoadmapApp() {
       <TodayFocusPanel
         locale={locale}
         unlocked={unlocked}
-        slots={focusSlots}
-        derailed={derailed}
+        today={focusToday}
+        slotsForDate={slotsForDate}
+        derailedForDate={derailedForDate}
         setFocusText={setFocusText}
+        setFocusDone={setFocusDone}
         addDerailed={addDerailed}
         removeDerailed={removeDerailed}
       />
@@ -1714,66 +1737,126 @@ function TaskFilterPanel({
   );
 }
 
+function formatDayLabel(dateKey: string, today: string, locale: Locale): string {
+  const c = COPY[locale];
+  if (dateKey === today) return c.today;
+  if (dateKey === shiftDateKey(today, -1)) return c.yesterday;
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return new Intl.DateTimeFormat(locale === "fr" ? "fr-CA" : "en-US", { month: "short", day: "numeric" }).format(dt);
+}
+
 function TodayFocusPanel({
   locale,
   unlocked,
-  slots,
-  derailed,
+  today,
+  slotsForDate,
+  derailedForDate,
   setFocusText,
+  setFocusDone,
   addDerailed,
   removeDerailed,
 }: {
   locale: Locale;
   unlocked: boolean;
-  slots: (FocusSlot | undefined)[];
-  derailed: DerailedItem[];
+  today: string;
+  slotsForDate: (date: string) => (FocusSlot | undefined)[];
+  derailedForDate: (date: string) => DerailedItem[];
   setFocusText: (slot: number, text: string) => Promise<void>;
+  setFocusDone: (slot: number, done: boolean) => Promise<void>;
   addDerailed: (text: string) => Promise<void>;
   removeDerailed: (id: string) => Promise<void>;
 }) {
   const c = COPY[locale];
   const [newDerailed, setNewDerailed] = useState("");
+  const [viewedDate, setViewedDate] = useState(today);
+
+  const isToday = viewedDate === today;
+  const editable = unlocked && isToday;
+  const atMin = viewedDate <= HISTORY_START_KEY;
+  const slots = slotsForDate(viewedDate);
+  const items = derailedForDate(viewedDate);
+  const dayLabel = formatDayLabel(viewedDate, today, locale);
 
   return (
-    <div className="mb-8 border border-lime bg-panel p-4">
-      <div className="grid gap-6 md:grid-cols-2">
+    <div className={`mb-8 border bg-panel p-4 ${isToday ? "border-lime" : "border-line"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="font-display text-xl font-black italic uppercase text-lime">{c.todayFocus}</p>
+        <div className="flex items-center gap-2 text-xs uppercase tracking-widest">
+          <button
+            onClick={() => setViewedDate((d) => shiftDateKey(d, -1))}
+            disabled={atMin}
+            aria-label="Previous day"
+            className="border border-line px-2 py-1 text-dim hover:border-lime hover:text-lime disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            ‹
+          </button>
+          <span className="min-w-[80px] text-center text-dim">{dayLabel}</span>
+          <button
+            onClick={() => setViewedDate((d) => shiftDateKey(d, 1))}
+            disabled={isToday}
+            aria-label="Next day"
+            className="border border-line px-2 py-1 text-dim hover:border-lime hover:text-lime disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            ›
+          </button>
+        </div>
+      </div>
+      {!isToday && <p className="mt-1 text-xs uppercase tracking-widest text-dim">{c.viewingPast}</p>}
+
+      <div className="mt-4 grid gap-6 md:grid-cols-2">
         <div>
-          <p className="font-display text-xl font-black italic uppercase text-lime">{c.todayFocus}</p>
-          <p className="mt-1 text-sm text-dim">{c.focusSubtitle}</p>
+          {isToday && <p className="text-sm text-dim">{c.focusSubtitle}</p>}
           <ol className="mt-3 space-y-2">
-            {Array.from({ length: FOCUS_SLOTS }, (_, i) => (
-              <li key={i} className="flex items-center gap-3">
-                <span className="font-display text-lg font-black text-lime">{i + 1}</span>
-                {unlocked ? (
-                  <input
-                    type="text"
-                    defaultValue={slots[i]?.text ?? ""}
-                    key={`${i}-${slots[i]?.text ?? ""}`}
-                    placeholder={c.focusPlaceholder}
-                    onBlur={(e) => setFocusText(i, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                    }}
-                    className="w-full border border-line bg-transparent px-2 py-1.5 text-sm placeholder:text-dim focus:border-lime focus:outline-none"
-                  />
-                ) : (
-                  <span className={`text-sm ${slots[i]?.text ? "" : "text-dim"}`}>
-                    {slots[i]?.text || "—"}
+            {Array.from({ length: FOCUS_SLOTS }, (_, i) => {
+              const slot = slots[i];
+              const isDone = !!slot?.done;
+              return (
+                <li key={i} className={`flex items-center gap-3 p-1 ${isDone ? "bg-blue-500/15" : ""}`}>
+                  <span className="w-4 shrink-0 text-center font-display text-lg font-black text-lime">
+                    {i + 1}
                   </span>
-                )}
-              </li>
-            ))}
+                  <input
+                    type="checkbox"
+                    checked={isDone}
+                    disabled={!editable || !slot?.text}
+                    onChange={(e) => setFocusDone(i, e.target.checked)}
+                    aria-label={`Mark focus ${i + 1} done`}
+                    className="h-4 w-4 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                  {editable ? (
+                    <input
+                      type="text"
+                      defaultValue={slot?.text ?? ""}
+                      key={`${i}-${slot?.text ?? ""}`}
+                      placeholder={c.focusPlaceholder}
+                      onBlur={(e) => setFocusText(i, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      }}
+                      className={`w-full border border-line bg-transparent px-2 py-1.5 text-sm placeholder:text-dim focus:border-lime focus:outline-none ${
+                        isDone ? "text-dim line-through" : ""
+                      }`}
+                    />
+                  ) : (
+                    <span className={`text-sm ${isDone ? "text-dim line-through" : slot?.text ? "" : "text-dim"}`}>
+                      {slot?.text || "—"}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </div>
 
         <div>
           <p className="font-display text-xl font-black italic uppercase">{c.notToDo}</p>
-          <p className="mt-1 text-sm text-dim">{c.notToDoSubtitle}</p>
+          {isToday && <p className="mt-1 text-sm text-dim">{c.notToDoSubtitle}</p>}
           <ul className="mt-3 space-y-1">
-            {derailed.map((item) => (
+            {items.map((item) => (
               <li key={item.id} className="flex items-start gap-2 text-sm text-mist">
                 <span className="flex-1">{item.text}</span>
-                {unlocked && (
+                {editable && (
                   <button
                     onClick={() => removeDerailed(item.id)}
                     aria-label={c.removeDerailed}
@@ -1785,7 +1868,7 @@ function TodayFocusPanel({
               </li>
             ))}
           </ul>
-          {unlocked && (
+          {editable && (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
