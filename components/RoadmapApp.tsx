@@ -76,6 +76,8 @@ const COPY = {
     taskDetailPlaceholder: "Detail (optional)",
     deleteConfirmMilestone: "Delete this milestone and its tasks?",
     deleteConfirmTask: "Delete this task?",
+    deleteConfirmPhase: "Delete this entire phase, with all its milestones, tasks and checkpoint?",
+    deletePhase: "Delete phase",
     addCriterion: "+ Add criterion",
     criterionPlaceholder: "Criterion",
     deleteConfirmCriterion: "Delete this criterion?",
@@ -137,6 +139,8 @@ const COPY = {
     taskDetailPlaceholder: "Détail (optionnel)",
     deleteConfirmMilestone: "Supprimer cet onglet et ses tâches?",
     deleteConfirmTask: "Supprimer cette tâche?",
+    deleteConfirmPhase: "Supprimer cette phase au complet, avec tous ses onglets, tâches et checkpoint?",
+    deletePhase: "Supprimer la phase",
     addCriterion: "+ Ajouter un critère",
     criterionPlaceholder: "Critère",
     deleteConfirmCriterion: "Supprimer ce critère?",
@@ -211,8 +215,10 @@ export default function RoadmapApp() {
     deleteStaticTask,
     milestoneEdits,
     criterionEdits,
+    phaseEdits,
     deleteStaticMilestone,
     deleteStaticCriterion,
+    deleteStaticPhase,
   } = useCustomContent();
   const { contacts, addContacts, updateContactStatus, removeContact } = useContacts();
   const [selectedId, setSelectedId] = useState<string>(allMilestones[0].id);
@@ -233,7 +239,9 @@ export default function RoadmapApp() {
 
   const mergedPhases = useMemo(() => {
     let extraCode = allMilestones.length;
-    return phases.map((phase) => {
+    return phases
+      .filter((phase) => !phaseEdits[phase.id]?.deleted)
+      .map((phase) => {
       const tasksFor = (milestoneId: string): RenderTask[] =>
         customTasks
           .filter((ct) => ct.milestoneId === milestoneId)
@@ -283,7 +291,7 @@ export default function RoadmapApp() {
 
       return { ...phase, milestones: [...staticMilestones, ...extraMilestones] };
     });
-  }, [customMilestones, customTasks, taskEdits, milestoneEdits]);
+  }, [customMilestones, customTasks, taskEdits, milestoneEdits, phaseEdits]);
 
   const mergedAllMilestones = useMemo(
     () => mergedPhases.flatMap((p) => p.milestones),
@@ -466,8 +474,27 @@ export default function RoadmapApp() {
                     <h2 className="font-display text-3xl font-black italic uppercase">
                       {t(phase.name, locale)}
                     </h2>
-                    <span className="font-display text-sm font-semibold uppercase tracking-widest text-dim">
-                      {t(phase.dates, locale)}
+                    <span className="flex items-baseline gap-3">
+                      <span className="font-display text-sm font-semibold uppercase tracking-widest text-dim">
+                        {t(phase.dates, locale)}
+                      </span>
+                      {unlocked && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(c.deleteConfirmPhase)) {
+                              if (phase.milestones.some((m) => m.id === selectedId)) {
+                                setSelectedId(allMilestones[0].id);
+                              }
+                              deleteStaticPhase(phase.id);
+                            }
+                          }}
+                          aria-label={c.deletePhase}
+                          title={c.deletePhase}
+                          className="text-dim hover:text-lime"
+                        >
+                          ×
+                        </button>
+                      )}
                     </span>
                   </div>
                   <p className="mt-1 max-w-3xl text-sm text-dim">{t(phase.intent, locale)}</p>

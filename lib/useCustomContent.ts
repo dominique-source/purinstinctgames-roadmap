@@ -56,6 +56,7 @@ export function useCustomContent() {
   const [taskEdits, setTaskEdits] = useState<Record<string, TaskEdit>>({});
   const [milestoneEdits, setMilestoneEdits] = useState<Record<string, StaticEdit>>({});
   const [criterionEdits, setCriterionEdits] = useState<Record<string, StaticEdit>>({});
+  const [phaseEdits, setPhaseEdits] = useState<Record<string, StaticEdit>>({});
 
   useEffect(() => {
     const firestore = db;
@@ -96,6 +97,13 @@ export function useCustomContent() {
       });
       setCriterionEdits(map);
     });
+    const unsubPE = onSnapshot(collection(firestore, "phaseEdits"), (snap) => {
+      const map: Record<string, StaticEdit> = {};
+      snap.forEach((d) => {
+        map[d.id] = { id: d.id, ...(d.data() as Omit<StaticEdit, "id">) };
+      });
+      setPhaseEdits(map);
+    });
     return () => {
       unsubM();
       unsubT();
@@ -103,6 +111,7 @@ export function useCustomContent() {
       unsubE();
       unsubME();
       unsubCE();
+      unsubPE();
     };
   }, []);
 
@@ -215,6 +224,23 @@ export function useCustomContent() {
     await setDoc(doc(firestore, "criterionEdits", id), { deleted: true }, { merge: true });
   }, []);
 
+  // Soft-deleting a whole phase: mark it deleted in the phaseEdits overlay
+  // and clean up custom milestones attached to it (and their custom tasks).
+  // The phase's static milestones and checkpoint are hidden with it.
+  const deleteStaticPhase = useCallback(async (id: string) => {
+    const firestore = db;
+    if (!firestore) return;
+    await ensureAnonymousAuth();
+    const orphanMilestones = customMilestones.filter((m) => m.phaseId === id);
+    const orphanIds = new Set(orphanMilestones.map((m) => m.id));
+    const orphanTasks = customTasks.filter((t) => orphanIds.has(t.milestoneId));
+    await Promise.all([
+      ...orphanTasks.map((t) => deleteDoc(doc(firestore, "customTasks", t.id))),
+      ...orphanMilestones.map((m) => deleteDoc(doc(firestore, "customMilestones", m.id))),
+    ]);
+    await setDoc(doc(firestore, "phaseEdits", id), { deleted: true }, { merge: true });
+  }, [customMilestones, customTasks]);
+
   return {
     customMilestones,
     customTasks,
@@ -222,6 +248,7 @@ export function useCustomContent() {
     taskEdits,
     milestoneEdits,
     criterionEdits,
+    phaseEdits,
     addMilestone,
     addTask,
     addCriterion,
@@ -233,5 +260,6 @@ export function useCustomContent() {
     deleteStaticTask,
     deleteStaticMilestone,
     deleteStaticCriterion,
+    deleteStaticPhase,
   };
 }

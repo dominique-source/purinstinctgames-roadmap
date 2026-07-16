@@ -71,6 +71,13 @@ service cloud.firestore {
       allow create, update, delete: if isUnlocked();
     }
 
+    // Overlay for soft-deleting an entire phase (with its milestones and
+    // checkpoint). Doc id == the static phase id.
+    match /phaseEdits/{id} {
+      allow read: if true;
+      allow create, update, delete: if isUnlocked();
+    }
+
     // Named contacts attached to a task (e.g. a "Contact investors" task
     // holding a long list of individual outreach statuses), so a task with
     // 100 people doesn't turn into 100 milestone tasks.
