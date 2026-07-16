@@ -219,8 +219,15 @@ export default function RoadmapApp() {
   const [selectedId, setSelectedId] = useState<string>(allMilestones[0].id);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [locale, setLocale] = useState<Locale>("en");
+  const [historyOpen, setHistoryOpen] = useState(false);
   const c = COPY[locale];
   const asideRef = useRef<HTMLElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
+
+  const jumpToHistory = useCallback(() => {
+    setHistoryOpen(true);
+    historyRef.current?.scrollIntoView({ block: "start" });
+  }, []);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(LOCALE_KEY);
@@ -444,12 +451,20 @@ export default function RoadmapApp() {
               </span>
             ))}
           </div>
-          <AccessBar
-            locale={locale}
-            unlocked={unlocked}
-            unlocking={unlocking}
-            unlock={unlock}
-          />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={jumpToHistory}
+              className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
+            >
+              {c.history}
+            </button>
+            <AccessBar
+              locale={locale}
+              unlocked={unlocked}
+              unlocking={unlocking}
+              unlock={unlock}
+            />
+          </div>
         </div>
       </header>
 
@@ -546,7 +561,14 @@ export default function RoadmapApp() {
             );
           })}
 
-          <HistoryPanel locale={locale} itemLabelById={itemLabelById} />
+          <div ref={historyRef}>
+            <HistoryPanel
+              locale={locale}
+              itemLabelById={itemLabelById}
+              open={historyOpen}
+              setOpen={setHistoryOpen}
+            />
+          </div>
         </section>
 
         {/* --------------------------- DETAIL PANEL --------------------------- */}
@@ -1667,18 +1689,21 @@ function TaskFilterPanel({
 function HistoryPanel({
   locale,
   itemLabelById,
+  open,
+  setOpen,
 }: {
   locale: Locale;
   itemLabelById: Record<string, Localized>;
+  open: boolean;
+  setOpen: (v: boolean) => void;
 }) {
   const c = COPY[locale];
   const entries = useHistory(50);
-  const [open, setOpen] = useState(false);
 
   return (
     <div className="mb-10 border border-line bg-panel">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between p-4 text-left"
       >
         <span className="font-display text-xl font-black italic uppercase">
