@@ -45,8 +45,6 @@ const COPY = {
     ownerOpen: (name: string) => `${name} — open`,
     locked: "Locked — unlock to edit",
     unlockedAs: (name: string | null) => (name ? `Unlocked — ${name}` : "Unlocked"),
-    reset: "Reset",
-    resetConfirm: "Reset all shared progress? This clears every checkbox, owner and note — history is kept.",
     wrongPassword: "Wrong password.",
     password: "Password",
     unlock: "Unlock",
@@ -108,8 +106,6 @@ const COPY = {
     ownerOpen: (name: string) => `${name} — en attente`,
     locked: "Verrouillé — déverrouille pour éditer",
     unlockedAs: (name: string | null) => (name ? `Déverrouillé — ${name}` : "Déverrouillé"),
-    reset: "Réinitialiser",
-    resetConfirm: "Réinitialiser toute la progression partagée? Toutes les cases, tous les responsables et notes sont effacés — l'historique est conservé.",
     wrongPassword: "Mauvais mot de passe.",
     password: "Mot de passe",
     unlock: "Déverrouiller",
@@ -193,7 +189,6 @@ export default function RoadmapApp() {
     progress,
     get,
     update,
-    reset,
     unlocked,
     unlocking,
     unlock,
@@ -241,7 +236,7 @@ export default function RoadmapApp() {
     let extraCode = allMilestones.length;
     return phases
       .filter((phase) => !phaseEdits[phase.id]?.deleted)
-      .map((phase) => {
+      .map((phase, phaseIndex) => {
       const tasksFor = (milestoneId: string): RenderTask[] =>
         customTasks
           .filter((ct) => ct.milestoneId === milestoneId)
@@ -289,7 +284,16 @@ export default function RoadmapApp() {
           };
         });
 
-      return { ...phase, milestones: [...staticMilestones, ...extraMilestones] };
+      // Phases renumber by visible position, so deleting e.g. Phase 3 turns
+      // "Phase 4 — Close" into "Phase 3 — Close".
+      return {
+        ...phase,
+        name: {
+          en: phase.name.en.replace(/^Phase \d+/, `Phase ${phaseIndex + 1}`),
+          fr: phase.name.fr.replace(/^Phase \d+/, `Phase ${phaseIndex + 1}`),
+        },
+        milestones: [...staticMilestones, ...extraMilestones],
+      };
     });
   }, [customMilestones, customTasks, taskEdits, milestoneEdits, phaseEdits]);
 
@@ -445,7 +449,6 @@ export default function RoadmapApp() {
             unlocked={unlocked}
             unlocking={unlocking}
             unlock={unlock}
-            reset={reset}
           />
         </div>
       </header>
@@ -461,7 +464,7 @@ export default function RoadmapApp() {
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
         {/* ------------------------------ MAP ------------------------------ */}
         <section aria-label="Roadmap map">
-          {mergedPhases.map((phase) => {
+          {mergedPhases.map((phase, phaseIndex) => {
             const checkpoint = mergedCheckpoints.find((c2) => c2.afterPhase === phase.id);
             return (
               <div key={phase.id} className="relative pl-6">
@@ -529,7 +532,7 @@ export default function RoadmapApp() {
 
                 {checkpoint && (
                   <CheckpointBlock
-                    checkpoint={checkpoint}
+                    checkpoint={{ ...checkpoint, code: `C${phaseIndex + 1}` }}
                     locale={locale}
                     getState={get}
                     update={update}
@@ -615,13 +618,11 @@ function AccessBar({
   unlocked,
   unlocking,
   unlock,
-  reset,
 }: {
   locale: Locale;
   unlocked: boolean;
   unlocking: boolean;
   unlock: (name: string, password: string) => Promise<boolean>;
-  reset: () => Promise<void>;
 }) {
   const c = COPY[locale];
   const [showForm, setShowForm] = useState(false);
@@ -637,14 +638,6 @@ function AccessBar({
         <span className="text-xs uppercase tracking-widest text-lime">
           {c.unlockedAs(getSavedActorName())}
         </span>
-        <button
-          onClick={() => {
-            if (window.confirm(c.resetConfirm)) reset();
-          }}
-          className="border border-line px-3 py-2 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
-        >
-          {c.reset}
-        </button>
       </div>
     );
   }
