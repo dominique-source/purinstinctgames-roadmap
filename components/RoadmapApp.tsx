@@ -20,6 +20,7 @@ import { useProgress, countDone, getSavedActorName, type ProgressMap, type TaskS
 import { useHistory, type HistoryEntry } from "@/lib/useHistory";
 import { useCustomContent } from "@/lib/useCustomContent";
 import { useContacts, type Contact, type ContactStatus } from "@/lib/useContacts";
+import { useDailyFocus, FOCUS_SLOTS, type FocusSlot, type DerailedItem } from "@/lib/useDailyFocus";
 
 const OWNER_OPTIONS: Owner[] = ["Dominique", "François", "Open"];
 const ACTOR_OPTIONS: Owner[] = ["Dominique", "François"];
@@ -98,6 +99,14 @@ const COPY = {
     contactNo: "No",
     contactPending: "Pending",
     removeContact: "Remove contact",
+    todayFocus: "Today's Focus",
+    focusSubtitle: "Pick 3 things. Only 3.",
+    focusPlaceholder: "e.g. Prepare for meeting with François",
+    notToDo: "Not-to-do list",
+    notToDoSubtitle: "Everything that popped up and pulled you off focus today.",
+    notToDoPlaceholder: "What derailed you?",
+    add: "+ Add",
+    removeDerailed: "Remove",
   },
   fr: {
     tagline: "PürInstinct · Le sport à l'état pur",
@@ -159,6 +168,14 @@ const COPY = {
     contactNo: "Non",
     contactPending: "En attente",
     removeContact: "Retirer le contact",
+    todayFocus: "Focus du jour",
+    focusSubtitle: "Choisis 3 choses. Seulement 3.",
+    focusPlaceholder: "ex. Préparer la rencontre avec François",
+    notToDo: "Liste des à-ne-pas-faire",
+    notToDoSubtitle: "Tout ce qui a surgi et t'a détourné du focus aujourd'hui.",
+    notToDoPlaceholder: "Qu'est-ce qui t'a déconcentré?",
+    add: "+ Ajouter",
+    removeDerailed: "Retirer",
   },
 } as const;
 
@@ -194,6 +211,7 @@ export default function RoadmapApp() {
     unlock,
     authError,
   } = useProgress();
+  const { slots: focusSlots, derailed, setFocusText, addDerailed, removeDerailed } = useDailyFocus();
   const {
     customMilestones,
     customTasks,
@@ -473,6 +491,16 @@ export default function RoadmapApp() {
         rows={allTaskRows}
         progress={progress}
         onJump={jumpToTask}
+      />
+
+      <TodayFocusPanel
+        locale={locale}
+        unlocked={unlocked}
+        slots={focusSlots}
+        derailed={derailed}
+        setFocusText={setFocusText}
+        addDerailed={addDerailed}
+        removeDerailed={removeDerailed}
       />
 
       {/* ============================== BODY ============================== */}
@@ -1682,6 +1710,108 @@ function TaskFilterPanel({
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+function TodayFocusPanel({
+  locale,
+  unlocked,
+  slots,
+  derailed,
+  setFocusText,
+  addDerailed,
+  removeDerailed,
+}: {
+  locale: Locale;
+  unlocked: boolean;
+  slots: (FocusSlot | undefined)[];
+  derailed: DerailedItem[];
+  setFocusText: (slot: number, text: string) => Promise<void>;
+  addDerailed: (text: string) => Promise<void>;
+  removeDerailed: (id: string) => Promise<void>;
+}) {
+  const c = COPY[locale];
+  const [newDerailed, setNewDerailed] = useState("");
+
+  return (
+    <div className="mb-8 border border-lime bg-panel p-4">
+      <div className="grid gap-6 md:grid-cols-2">
+        <div>
+          <p className="font-display text-xl font-black italic uppercase text-lime">{c.todayFocus}</p>
+          <p className="mt-1 text-sm text-dim">{c.focusSubtitle}</p>
+          <ol className="mt-3 space-y-2">
+            {Array.from({ length: FOCUS_SLOTS }, (_, i) => (
+              <li key={i} className="flex items-center gap-3">
+                <span className="font-display text-lg font-black text-lime">{i + 1}</span>
+                {unlocked ? (
+                  <input
+                    type="text"
+                    defaultValue={slots[i]?.text ?? ""}
+                    key={`${i}-${slots[i]?.text ?? ""}`}
+                    placeholder={c.focusPlaceholder}
+                    onBlur={(e) => setFocusText(i, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                    className="w-full border border-line bg-transparent px-2 py-1.5 text-sm placeholder:text-dim focus:border-lime focus:outline-none"
+                  />
+                ) : (
+                  <span className={`text-sm ${slots[i]?.text ? "" : "text-dim"}`}>
+                    {slots[i]?.text || "—"}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <div>
+          <p className="font-display text-xl font-black italic uppercase">{c.notToDo}</p>
+          <p className="mt-1 text-sm text-dim">{c.notToDoSubtitle}</p>
+          <ul className="mt-3 space-y-1">
+            {derailed.map((item) => (
+              <li key={item.id} className="flex items-start gap-2 text-sm text-mist">
+                <span className="flex-1">{item.text}</span>
+                {unlocked && (
+                  <button
+                    onClick={() => removeDerailed(item.id)}
+                    aria-label={c.removeDerailed}
+                    className="shrink-0 text-dim hover:text-lime"
+                  >
+                    ×
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {unlocked && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newDerailed.trim()) return;
+                addDerailed(newDerailed);
+                setNewDerailed("");
+              }}
+              className="mt-3 flex gap-2"
+            >
+              <input
+                type="text"
+                value={newDerailed}
+                onChange={(e) => setNewDerailed(e.target.value)}
+                placeholder={c.notToDoPlaceholder}
+                className="w-full border border-line bg-transparent px-2 py-1.5 text-sm placeholder:text-dim focus:border-lime focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="shrink-0 border border-line px-3 py-1.5 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
+              >
+                {c.add}
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

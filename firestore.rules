@@ -78,6 +78,19 @@ service cloud.firestore {
       allow create, update, delete: if isUnlocked();
     }
 
+    // Today's focus: exactly 3 slots per day. Doc id == `${date}_${slot}`,
+    // so the slot count is capped structurally rather than by a rule.
+    match /focusSlots/{id} {
+      allow read: if true;
+      allow create, update, delete: if isUnlocked();
+    }
+
+    // Free-form "what derailed me today" list, no cap.
+    match /derailedTasks/{id} {
+      allow read: if true;
+      allow create, update, delete: if isUnlocked();
+    }
+
     // Named contacts attached to a task (e.g. a "Contact investors" task
     // holding a long list of individual outreach statuses), so a task with
     // 100 people doesn't turn into 100 milestone tasks.
