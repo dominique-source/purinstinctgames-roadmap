@@ -44,11 +44,18 @@ export interface TaskEdit {
   deleted?: boolean;
 }
 
+export interface StaticEdit {
+  id: string;
+  deleted?: boolean;
+}
+
 export function useCustomContent() {
   const [customMilestones, setCustomMilestones] = useState<CustomMilestone[]>([]);
   const [customTasks, setCustomTasks] = useState<CustomTask[]>([]);
   const [customCriteria, setCustomCriteria] = useState<CustomCriterion[]>([]);
   const [taskEdits, setTaskEdits] = useState<Record<string, TaskEdit>>({});
+  const [milestoneEdits, setMilestoneEdits] = useState<Record<string, StaticEdit>>({});
+  const [criterionEdits, setCriterionEdits] = useState<Record<string, StaticEdit>>({});
 
   useEffect(() => {
     const firestore = db;
@@ -75,11 +82,27 @@ export function useCustomContent() {
       });
       setTaskEdits(map);
     });
+    const unsubME = onSnapshot(collection(firestore, "milestoneEdits"), (snap) => {
+      const map: Record<string, StaticEdit> = {};
+      snap.forEach((d) => {
+        map[d.id] = { id: d.id, ...(d.data() as Omit<StaticEdit, "id">) };
+      });
+      setMilestoneEdits(map);
+    });
+    const unsubCE = onSnapshot(collection(firestore, "criterionEdits"), (snap) => {
+      const map: Record<string, StaticEdit> = {};
+      snap.forEach((d) => {
+        map[d.id] = { id: d.id, ...(d.data() as Omit<StaticEdit, "id">) };
+      });
+      setCriterionEdits(map);
+    });
     return () => {
       unsubM();
       unsubT();
       unsubC();
       unsubE();
+      unsubME();
+      unsubCE();
     };
   }, []);
 
@@ -174,11 +197,31 @@ export function useCustomContent() {
     await setDoc(doc(firestore, "taskEdits", id), { deleted: true }, { merge: true });
   }, []);
 
+  // Soft-deleting a milestone from the fixed M1-M12 plan: mark it deleted in
+  // the milestoneEdits overlay and clean up any custom tasks attached to it.
+  const deleteStaticMilestone = useCallback(async (id: string) => {
+    const firestore = db;
+    if (!firestore) return;
+    await ensureAnonymousAuth();
+    const orphanTasks = customTasks.filter((t) => t.milestoneId === id);
+    await Promise.all(orphanTasks.map((t) => deleteDoc(doc(firestore, "customTasks", t.id))));
+    await setDoc(doc(firestore, "milestoneEdits", id), { deleted: true }, { merge: true });
+  }, [customTasks]);
+
+  const deleteStaticCriterion = useCallback(async (id: string) => {
+    const firestore = db;
+    if (!firestore) return;
+    await ensureAnonymousAuth();
+    await setDoc(doc(firestore, "criterionEdits", id), { deleted: true }, { merge: true });
+  }, []);
+
   return {
     customMilestones,
     customTasks,
     customCriteria,
     taskEdits,
+    milestoneEdits,
+    criterionEdits,
     addMilestone,
     addTask,
     addCriterion,
@@ -188,5 +231,7 @@ export function useCustomContent() {
     updateCustomTask,
     editStaticTask,
     deleteStaticTask,
+    deleteStaticMilestone,
+    deleteStaticCriterion,
   };
 }

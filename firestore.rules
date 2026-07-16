@@ -57,6 +57,20 @@ service cloud.firestore {
       allow create, update, delete: if isUnlocked();
     }
 
+    // Overlay for soft-deleting a milestone from the fixed M1-M12 plan.
+    // Doc id == the static milestone id.
+    match /milestoneEdits/{id} {
+      allow read: if true;
+      allow create, update, delete: if isUnlocked();
+    }
+
+    // Overlay for soft-deleting a criterion from the fixed C1-C4 checkpoints.
+    // Doc id == the static criterion id.
+    match /criterionEdits/{id} {
+      allow read: if true;
+      allow create, update, delete: if isUnlocked();
+    }
+
     // Named contacts attached to a task (e.g. a "Contact investors" task
     // holding a long list of individual outreach statuses), so a task with
     // 100 people doesn't turn into 100 milestone tasks.

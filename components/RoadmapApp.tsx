@@ -209,6 +209,10 @@ export default function RoadmapApp() {
     updateCustomTask,
     editStaticTask,
     deleteStaticTask,
+    milestoneEdits,
+    criterionEdits,
+    deleteStaticMilestone,
+    deleteStaticCriterion,
   } = useCustomContent();
   const { contacts, addContacts, updateContactStatus, removeContact } = useContacts();
   const [selectedId, setSelectedId] = useState<string>(allMilestones[0].id);
@@ -241,7 +245,9 @@ export default function RoadmapApp() {
             isCustom: true,
           }));
 
-      const staticMilestones: RenderMilestone[] = phase.milestones.map((m) => ({
+      const staticMilestones: RenderMilestone[] = phase.milestones
+        .filter((m) => !milestoneEdits[m.id]?.deleted)
+        .map((m) => ({
         ...m,
         tasks: [
           ...m.tasks
@@ -277,7 +283,7 @@ export default function RoadmapApp() {
 
       return { ...phase, milestones: [...staticMilestones, ...extraMilestones] };
     });
-  }, [customMilestones, customTasks, taskEdits]);
+  }, [customMilestones, customTasks, taskEdits, milestoneEdits]);
 
   const mergedAllMilestones = useMemo(
     () => mergedPhases.flatMap((p) => p.milestones),
@@ -286,13 +292,15 @@ export default function RoadmapApp() {
 
   const mergedCheckpoints = useMemo<RenderCheckpoint[]>(() => {
     return checkpoints.map((cp) => {
-      const staticCriteria: RenderCriterion[] = cp.criteria.map((cr) => ({ ...cr }));
+      const staticCriteria: RenderCriterion[] = cp.criteria
+        .filter((cr) => !criterionEdits[cr.id]?.deleted)
+        .map((cr) => ({ ...cr }));
       const extraCriteria: RenderCriterion[] = customCriteria
         .filter((cc) => cc.checkpointId === cp.id)
         .map((cc) => ({ id: cc.id, text: wrap(cc.text), isCustom: true }));
       return { ...cp, criteria: [...staticCriteria, ...extraCriteria] };
     });
-  }, [customCriteria]);
+  }, [customCriteria, criterionEdits]);
 
   const itemLabelById = useMemo(() => {
     const map: Record<string, Localized> = {};
@@ -475,16 +483,13 @@ export default function RoadmapApp() {
                       done={countDone(progress, m.tasks.map((t) => t.id))}
                       unlocked={unlocked}
                       onSelect={() => setSelectedId(m.id)}
-                      onDelete={
-                        m.isCustom
-                          ? () => {
-                              if (window.confirm(c.deleteConfirmMilestone)) {
-                                if (selectedId === m.id) setSelectedId(allMilestones[0].id);
-                                removeMilestone(m.id);
-                              }
-                            }
-                          : undefined
-                      }
+                      onDelete={() => {
+                        if (window.confirm(c.deleteConfirmMilestone)) {
+                          if (selectedId === m.id) setSelectedId(allMilestones[0].id);
+                          if (m.isCustom) removeMilestone(m.id);
+                          else deleteStaticMilestone(m.id);
+                        }
+                      }}
                     />
                   ))}
                 </div>
@@ -504,6 +509,7 @@ export default function RoadmapApp() {
                     unlocked={unlocked}
                     addCriterion={addCriterion}
                     removeCriterion={removeCriterion}
+                    deleteStaticCriterion={deleteStaticCriterion}
                   />
                 )}
               </div>
@@ -515,7 +521,7 @@ export default function RoadmapApp() {
 
         {/* --------------------------- DETAIL PANEL --------------------------- */}
         <aside ref={asideRef} className="lg:sticky lg:top-6 lg:h-fit" aria-label="Milestone detail">
-          <MilestoneDetail
+          {selected && <MilestoneDetail
             milestone={selected}
             locale={locale}
             getState={get}
@@ -530,7 +536,7 @@ export default function RoadmapApp() {
             addContacts={addContacts}
             updateContactStatus={updateContactStatus}
             removeContact={removeContact}
-          />
+          />}
         </aside>
       </div>
 
@@ -1381,6 +1387,7 @@ function CheckpointBlock({
   unlocked,
   addCriterion,
   removeCriterion,
+  deleteStaticCriterion,
 }: {
   checkpoint: RenderCheckpoint;
   locale: Locale;
@@ -1389,6 +1396,7 @@ function CheckpointBlock({
   unlocked: boolean;
   addCriterion: (checkpointId: string, text: string) => Promise<void>;
   removeCriterion: (id: string) => Promise<void>;
+  deleteStaticCriterion: (id: string) => Promise<void>;
 }) {
   const c = COPY[locale];
   const total = checkpoint.criteria.length;
@@ -1431,10 +1439,13 @@ function CheckpointBlock({
               >
                 {t(crit.text, locale)}
               </label>
-              {unlocked && crit.isCustom && (
+              {unlocked && (
                 <button
                   onClick={() => {
-                    if (window.confirm(c.deleteConfirmCriterion)) removeCriterion(crit.id);
+                    if (window.confirm(c.deleteConfirmCriterion)) {
+                      if (crit.isCustom) removeCriterion(crit.id);
+                      else deleteStaticCriterion(crit.id);
+                    }
                   }}
                   aria-label="Delete criterion"
                   className="shrink-0 text-dim hover:text-lime"
