@@ -101,44 +101,38 @@ export function useDailyFocus() {
     [allDerailed]
   );
 
-  const setFocusText = useCallback(
-    async (slot: number, text: string) => {
-      const firestore = db;
-      if (!firestore) return;
-      await ensureAnonymousAuth();
-      const id = `${today}_${slot}`;
-      if (!text.trim()) {
-        await deleteDoc(doc(firestore, "focusSlots", id));
-        return;
-      }
-      await setDoc(
-        doc(firestore, "focusSlots", id),
-        {
-          date: today,
-          slot,
-          text,
-          updatedBy: getSavedActorName() ?? "Unknown",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    },
-    [today]
-  );
+  const setFocusText = useCallback(async (date: string, slot: number, text: string) => {
+    const firestore = db;
+    if (!firestore) return;
+    await ensureAnonymousAuth();
+    const id = `${date}_${slot}`;
+    if (!text.trim()) {
+      await deleteDoc(doc(firestore, "focusSlots", id));
+      return;
+    }
+    await setDoc(
+      doc(firestore, "focusSlots", id),
+      {
+        date,
+        slot,
+        text,
+        updatedBy: getSavedActorName() ?? "Unknown",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }, []);
 
-  const setFocusDone = useCallback(
-    async (slot: number, done: boolean) => {
-      const firestore = db;
-      if (!firestore) return;
-      await ensureAnonymousAuth();
-      await setDoc(
-        doc(firestore, "focusSlots", `${today}_${slot}`),
-        { date: today, slot, done, updatedBy: getSavedActorName() ?? "Unknown", updatedAt: serverTimestamp() },
-        { merge: true }
-      );
-    },
-    [today]
-  );
+  const setFocusDone = useCallback(async (date: string, slot: number, done: boolean) => {
+    const firestore = db;
+    if (!firestore) return;
+    await ensureAnonymousAuth();
+    await setDoc(
+      doc(firestore, "focusSlots", `${date}_${slot}`),
+      { date, slot, done, updatedBy: getSavedActorName() ?? "Unknown", updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+  }, []);
 
   const addDerailed = useCallback(
     async (text: string) => {
