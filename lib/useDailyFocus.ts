@@ -163,5 +163,7 @@ export function useDailyFocus() {
     setFocusDone,
     addDerailed,
     removeDerailed,
+    allFocusSlots: allSlots,
+    allDerailedItems: allDerailed,
   };
 }

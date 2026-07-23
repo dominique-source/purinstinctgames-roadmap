@@ -122,6 +122,11 @@ const COPY = {
     focusFullAlert: "Today's focus is already full (3/3). Clear a slot first.",
     prepareTomorrow: "Prepare tomorrow",
     preparingTomorrow: "Preparing tomorrow — these will appear as Today's Focus tomorrow.",
+    summary: "Summary",
+    close: "Close",
+    allFocusItems: "All focus items",
+    allDerailedItems: "Everything that derailed",
+    focusSummaryStats: (done: number, total: number) => `${done}/${total} done across history`,
   },
   fr: {
     tagline: "PürInstinct · Le sport à l'état pur",
@@ -199,6 +204,11 @@ const COPY = {
     focusFullAlert: "Le focus d'aujourd'hui est déjà plein (3/3). Libère une case d'abord.",
     prepareTomorrow: "Préparer demain",
     preparingTomorrow: "Préparation de demain — ces items deviendront le Focus du jour demain.",
+    summary: "Résumé",
+    close: "Fermer",
+    allFocusItems: "Tous les focus",
+    allDerailedItems: "Tout ce qui a déraillé",
+    focusSummaryStats: (done: number, total: number) => `${done}/${total} complétés dans l'historique`,
   },
 } as const;
 
@@ -242,6 +252,8 @@ export default function RoadmapApp() {
     setFocusDone,
     addDerailed,
     removeDerailed,
+    allFocusSlots,
+    allDerailedItems,
   } = useDailyFocus();
   const {
     customMilestones,
@@ -534,6 +546,8 @@ export default function RoadmapApp() {
         setFocusDone={setFocusDone}
         addDerailed={addDerailed}
         removeDerailed={removeDerailed}
+        allFocusSlots={allFocusSlots}
+        allDerailedItems={allDerailedItems}
       />
 
       {/* ============================== BODY ============================== */}
@@ -1767,6 +1781,8 @@ function TodayFocusPanel({
   setFocusDone,
   addDerailed,
   removeDerailed,
+  allFocusSlots,
+  allDerailedItems,
 }: {
   locale: Locale;
   unlocked: boolean;
@@ -1777,10 +1793,13 @@ function TodayFocusPanel({
   setFocusDone: (date: string, slot: number, done: boolean) => Promise<void>;
   addDerailed: (text: string) => Promise<void>;
   removeDerailed: (id: string) => Promise<void>;
+  allFocusSlots: FocusSlot[];
+  allDerailedItems: DerailedItem[];
 }) {
   const c = COPY[locale];
   const [newDerailed, setNewDerailed] = useState("");
   const [viewedDate, setViewedDate] = useState(today);
+  const [showSummary, setShowSummary] = useState(false);
   const tomorrow = shiftDateKey(today, 1);
 
   const isToday = viewedDate === today;
@@ -1808,7 +1827,15 @@ function TodayFocusPanel({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <p className="font-display text-xl font-black italic uppercase text-lime">{c.todayFocus}</p>
-          {isToday && unlocked && (
+          {isToday && !showSummary && (
+            <button
+              onClick={() => setShowSummary(true)}
+              className="border border-line px-2 py-1 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
+            >
+              {c.summary}
+            </button>
+          )}
+          {isToday && !showSummary && unlocked && (
             <button
               onClick={() => setViewedDate(tomorrow)}
               className="border border-line px-2 py-1 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
@@ -1817,29 +1844,50 @@ function TodayFocusPanel({
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2 text-xs uppercase tracking-widest">
+        {showSummary ? (
           <button
-            onClick={() => setViewedDate((d) => shiftDateKey(d, -1))}
-            disabled={atMin}
-            aria-label="Previous day"
-            className="border border-line px-2 py-1 text-dim hover:border-lime hover:text-lime disabled:cursor-not-allowed disabled:opacity-30"
+            onClick={() => setShowSummary(false)}
+            className="border border-line px-2 py-1 text-xs uppercase tracking-widest text-dim hover:border-lime hover:text-lime"
           >
-            ‹
+            {c.close}
           </button>
-          <span className="min-w-[80px] text-center text-dim">{dayLabel}</span>
-          <button
-            onClick={() => setViewedDate((d) => shiftDateKey(d, 1))}
-            disabled={viewedDate >= today}
-            aria-label="Next day"
-            className="border border-line px-2 py-1 text-dim hover:border-lime hover:text-lime disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            ›
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2 text-xs uppercase tracking-widest">
+            <button
+              onClick={() => setViewedDate((d) => shiftDateKey(d, -1))}
+              disabled={atMin}
+              aria-label="Previous day"
+              className="border border-line px-2 py-1 text-dim hover:border-lime hover:text-lime disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              ‹
+            </button>
+            <span className="min-w-[80px] text-center text-dim">{dayLabel}</span>
+            <button
+              onClick={() => setViewedDate((d) => shiftDateKey(d, 1))}
+              disabled={viewedDate >= today}
+              aria-label="Next day"
+              className="border border-line px-2 py-1 text-dim hover:border-lime hover:text-lime disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              ›
+            </button>
+          </div>
+        )}
       </div>
-      {isFuture && <p className="mt-1 text-xs uppercase tracking-widest text-lime">{c.preparingTomorrow}</p>}
-      {isPast && <p className="mt-1 text-xs uppercase tracking-widest text-dim">{c.viewingPast}</p>}
+      {!showSummary && isFuture && (
+        <p className="mt-1 text-xs uppercase tracking-widest text-lime">{c.preparingTomorrow}</p>
+      )}
+      {!showSummary && isPast && (
+        <p className="mt-1 text-xs uppercase tracking-widest text-dim">{c.viewingPast}</p>
+      )}
 
+      {showSummary ? (
+        <FocusSummary
+          locale={locale}
+          today={today}
+          allFocusSlots={allFocusSlots}
+          allDerailedItems={allDerailedItems}
+        />
+      ) : (
       <div className="mt-4 grid gap-6 md:grid-cols-2">
         <div>
           {!isPast && <p className="text-sm text-dim">{c.focusSubtitle}</p>}
@@ -1945,6 +1993,98 @@ function TodayFocusPanel({
               </button>
             </form>
           )}
+        </div>
+      </div>
+      )}
+    </div>
+  );
+}
+
+function FocusSummary({
+  locale,
+  today,
+  allFocusSlots,
+  allDerailedItems,
+}: {
+  locale: Locale;
+  today: string;
+  allFocusSlots: FocusSlot[];
+  allDerailedItems: DerailedItem[];
+}) {
+  const c = COPY[locale];
+
+  const focusByDate = useMemo(() => {
+    const map = new Map<string, FocusSlot[]>();
+    allFocusSlots
+      .filter((s) => s.date <= today && s.text)
+      .forEach((s) => {
+        const arr = map.get(s.date) ?? [];
+        arr.push(s);
+        map.set(s.date, arr);
+      });
+    map.forEach((arr) => arr.sort((a, b) => a.slot - b.slot));
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [allFocusSlots, today]);
+
+  const derailedByDate = useMemo(() => {
+    const map = new Map<string, DerailedItem[]>();
+    allDerailedItems
+      .filter((d) => d.date <= today)
+      .forEach((d) => {
+        const arr = map.get(d.date) ?? [];
+        arr.push(d);
+        map.set(d.date, arr);
+      });
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [allDerailedItems, today]);
+
+  const totalFocus = focusByDate.reduce((n, [, items]) => n + items.length, 0);
+  const doneFocus = focusByDate.reduce((n, [, items]) => n + items.filter((i) => i.done).length, 0);
+
+  return (
+    <div className="mt-4">
+      <p className="text-sm text-dim">{c.focusSummaryStats(doneFocus, totalFocus)}</p>
+      <div className="mt-4 grid max-h-[420px] gap-6 overflow-y-auto md:grid-cols-2">
+        <div>
+          <p className="font-display text-lg font-black italic uppercase text-lime">{c.allFocusItems}</p>
+          <ul className="mt-2 space-y-3">
+            {focusByDate.length === 0 && <li className="text-sm text-dim">{c.noHistory}</li>}
+            {focusByDate.map(([date, dateItems]) => (
+              <li key={date}>
+                <p className="text-xs uppercase tracking-widest text-dim">{formatDayLabel(date, today, locale)}</p>
+                <ul className="mt-1 space-y-1">
+                  {dateItems.map((item) => (
+                    <li
+                      key={item.id}
+                      className={`flex items-center gap-2 px-1 text-sm ${item.done ? "bg-blue-500/15" : ""}`}
+                    >
+                      <span className="shrink-0">{item.done ? "✓" : "○"}</span>
+                      <span className={item.done ? "text-dim line-through" : ""}>{item.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div>
+          <p className="font-display text-lg font-black italic uppercase">{c.allDerailedItems}</p>
+          <ul className="mt-2 space-y-3">
+            {derailedByDate.length === 0 && <li className="text-sm text-dim">{c.noHistory}</li>}
+            {derailedByDate.map(([date, dateItems]) => (
+              <li key={date}>
+                <p className="text-xs uppercase tracking-widest text-dim">{formatDayLabel(date, today, locale)}</p>
+                <ul className="mt-1 space-y-1">
+                  {dateItems.map((item) => (
+                    <li key={item.id} className="px-1 text-sm text-mist">
+                      {item.text}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     </div>
